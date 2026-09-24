@@ -4,19 +4,34 @@ How to build the API, and what exists now. Domain rules live in [domain.md](doma
 
 ## Current state
 
-The product is specified and not built.
+Sign-in is live. Days, the journal, the coach, and Stripe are not.
 
 Installed today, from `requirements.txt`:
 
 - Python 3.12+
 - FastAPI
 - Uvicorn
+- SQLAlchemy 2
+- Alembic
+- PostgreSQL driver (`psycopg`)
+- Argon2 password hashes
+- PyJWT
+- Google auth, used to verify ID tokens
 
-`src/main.py` exposes one route:
+Live routes:
 
 ```text
-GET /api/hello
+GET  /api/hello
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/google
+POST /api/auth/password
+POST /api/auth/refresh
+POST /api/auth/logout
+GET  /api/me
 ```
+
+`GET /api/hello` still returns:
 
 ```json
 {
@@ -24,14 +39,11 @@ GET /api/hello
 }
 ```
 
-Interactive docs:
+Request bodies, cookies, and status codes are in [api.md](api.md). Register, login, Google sign-in, and refresh set HttpOnly cookies and return the user. New subscriptions have `plan` `free`.
 
-```text
-http://localhost:8000/docs
-http://localhost:8000/redoc
-```
+Not present yet: an AI client, Stripe Checkout, the billing portal, and webhooks.
 
-Not present yet: PostgreSQL, SQLAlchemy, Google authentication, an AI client, Stripe.
+The choices behind this slice are in [auth-decisions.md](auth-decisions.md). Domain rules for days and plans are in [domain.md](domain.md).
 
 ## Run
 
@@ -59,66 +71,83 @@ uvicorn src.main:app --reload
 
 The API listens at `http://localhost:8000`. `--reload` restarts on file changes. Stop it with CTRL+C. Leave the virtual environment with `deactivate`.
 
-Secrets stay in an uncommitted env file. Expected names, once those services exist:
+Interactive docs:
+
+```text
+http://localhost:8000/docs
+http://localhost:8000/redoc
+```
+
+Secrets stay in an uncommitted env file. Required for this slice:
 
 ```text
 DATABASE_URL=
+JWT_SECRET=
 GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+```
+
+`GOOGLE_CLIENT_ID` is required for Google sign-in. Email and password sign-in works without it. Leave `COOKIE_SECURE` unset for local HTTP. Set it to true when the API is served over HTTPS.
+
+Later services will add:
+
+```text
 STRIPE_SECRET_KEY=
 AI_API_KEY=
 ```
 
 Do not commit `.env` files or credentials.
 
+Apply the schema before the first run against PostgreSQL:
+
+```bash
+alembic upgrade head
+```
+
 ## Phases
 
-### Phase 0 — now
+### Phase 0 — hello
 
-`GET /api/hello` only. Keep this route while the app is a starter.
+`GET /api/hello` remains.
 
-### Phase 1 — frontend prototype
+### Accounts — now
 
-The mobile prototype runs on mock data. It does not need new endpoints. Do not add Phase 2 modules while that prototype is being built.
-
-### Phase 2 — the record
-
-Add users, transformations, days, and journal entries. Modules this phase introduces:
+Email/password sign-in, Google sign-in, refresh tokens, and the user plus subscription tables. Modules:
 
 ```text
 src/
 ├── main.py
 ├── api/
-│   ├── today.py
-│   ├── journey.py
-│   └── journal.py
+│   └── auth.py
 ├── models/
 ├── schemas/
+│   └── auth.py
 ├── services/
+│   └── auth.py
 └── core/
 ```
 
-`services/` owns streak length, day status, and the rates in [domain.md](domain.md). Routes stay thin and call those services.
+Stripe ids live on `subscriptions` and stay null. Do not add Checkout in this phase.
 
-### Phase 3 — accounts, coach, and billing
+### Phase 1 — frontend prototype
 
-Add Google authentication, the coach, and Stripe. Modules this phase introduces:
+The mobile prototype runs on mock data. It does not need new endpoints.
 
-```text
-src/api/auth.py
-src/api/coach.py
-```
+### Phase 2 — the record
 
-Plus the Stripe and AI clients behind services. Entitlements follow the Free and Pro list in [domain.md](domain.md).
+Add transformations, days, and journal entries. Routes stay thin. `services/` will own streak length, day status, and the rates in [domain.md](domain.md).
+
+### Phase 3 — coach and billing
+
+Add the coach and Stripe. A later billing slice fills `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, and `plan` on the existing subscription row. Entitlements follow the Free and Pro list in [domain.md](domain.md).
 
 ## Conventions
 
 - Functional style. Prefer plain functions over classes for route handlers and services.
 - Type hints on every function. Pydantic models for request and response bodies.
 - Early returns for error cases. Happy path last.
-- `HTTPException` for expected errors.
+- Expected auth failures raise `AuthError`. The app returns the same `detail` JSON as `HTTPException`.
 - Lowercase underscored module names.
-- Document a route here only after the handler exists. Clients should not call a path this file does not list under Current state.
+- Add a live route to the list under Current state, and describe the request and response in [api.md](api.md). Clients should not call a path that list does not include.
 
 ## Production
 

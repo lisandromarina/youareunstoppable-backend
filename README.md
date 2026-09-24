@@ -2,15 +2,15 @@
 
 FastAPI backend for the **YouAreUnstoppable** application.
 
-The backend provides the API used by the React frontend and will eventually handle authentication, transformations, daily commitments, journey tracking, journal entries, AI coaching, and subscriptions.
+The backend provides the API used by the React frontend. Sign-in is live. Transformations, daily commitments, the journey, the journal, the AI coach, and Stripe subscriptions come later.
 
 ---
 
 ## Current state
 
-The product is specified and not built. The only live route is `GET /api/hello`.
+Email/password and Google sign-in are implemented. Every new account is Free and has a subscription row. Stripe is not connected.
 
-PostgreSQL, SQLAlchemy, Google authentication, the AI coach, and Stripe are planned and not installed yet. The frontend prototype does not need new endpoints.
+Days, the journal, the coach, and billing routes are not built. The frontend prototype does not need them yet.
 
 ---
 
@@ -19,6 +19,8 @@ PostgreSQL, SQLAlchemy, Google authentication, the AI coach, and Stripe are plan
 | Doc | What it covers |
 | --- | --- |
 | [docs/domain.md](docs/domain.md) | Days, streaks, journal, coach, and Free vs Pro |
+| [docs/auth-decisions.md](docs/auth-decisions.md) | Why the auth and subscription tables are shaped this way |
+| [docs/api.md](docs/api.md) | Live routes, request bodies, cookies, and status codes |
 | [docs/implementation.md](docs/implementation.md) | How to build the API, phases, and what exists today |
 
 Read those before adding routes.
@@ -30,12 +32,13 @@ Read those before adding routes.
 * Python 3.12+
 * FastAPI
 * Uvicorn
+* PostgreSQL
+* SQLAlchemy
+* Alembic
+* Google sign-in (ID token verification)
 
 Future technologies will be added as the application grows:
 
-* PostgreSQL
-* SQLAlchemy
-* Google Authentication
 * AI Coach
 * Stripe
 
@@ -67,10 +70,15 @@ pip --version
 
 ```text
 backend/
-├── .venv/
+├── alembic/
 ├── src/
-│   ├── __init__.py
+│   ├── api/
+│   ├── core/
+│   ├── models/
+│   ├── schemas/
+│   ├── services/
 │   └── main.py
+├── tests/
 ├── requirements.txt
 └── README.md
 ```
@@ -121,6 +129,22 @@ With the virtual environment activated:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Create a `.env` file in `backend/` before migrating or starting the API. Required names:
+
+```text
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/youareunstoppable
+JWT_SECRET=
+GOOGLE_CLIENT_ID=
+```
+
+`GOOGLE_CLIENT_ID` is required for Google sign-in. Do not commit `.env`.
+
+Apply the database migration:
+
+```bash
+alembic upgrade head
 ```
 
 ---
@@ -211,14 +235,19 @@ deactivate
 
 ## Environment Variables
 
-Environment variables will be added as external services are introduced.
-
-For example:
+Required for sign-in:
 
 ```text
 DATABASE_URL=
+JWT_SECRET=
 GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+```
+
+Leave `COOKIE_SECURE` unset for local HTTP. Set it to true when the API is served over HTTPS.
+
+Stripe and the coach will add their own secrets later:
+
+```text
 STRIPE_SECRET_KEY=
 AI_API_KEY=
 ```
@@ -250,6 +279,8 @@ The core API concept will be:
 
 ```text
 User
+  │
+  ├── Subscription
   │
   └── Transformation
         │

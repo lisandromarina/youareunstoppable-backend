@@ -1,2 +1,13 @@
 fastapi
 uvicorn[standard]
+sqlalchemy
+psycopg[binary]
+alembic
+pydantic-settings
+pwdlib[argon2]
+pyjwt
+google-auth
+requests
+email-validator
+pytest
+httpx

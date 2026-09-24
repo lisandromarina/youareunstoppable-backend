@@ -1,8 +1,6 @@
 # YouAreUnstoppable — Domain
 
-The rules the API will have to protect. The product is specified and not built. The only live route is `GET /api/hello` in `src/main.py`. This file does not list endpoints that do not exist yet.
-
-How to build the API, and in which phase, lives in [implementation.md](implementation.md).
+The rules the API will have to protect. Days, the journal, and the coach are specified and not built. Sign-in is live. This file does not list endpoints. The live contract is in [api.md](api.md).
 
 The user-facing screens live in the frontend repo at `frontend/docs/experience.md`.
 
@@ -28,6 +26,14 @@ A day has:
 The journey grid is a view of those days. It is not a separate stored object.
 
 The fundamental unit is the day. Schema and API names use day, commitment, transformation, and journey.
+
+## Accounts
+
+A person has one user row and one subscription row. `subscriptions.user_id` references `users.id`. Signup creates the user, then the subscription.
+
+The user stores email, an optional password hash, an optional Google subject, role (`user` or `admin`), last sign-in, and `deleted_at`. The subscription stores `user_id`, `plan` (`free` or `pro`), Stripe ids, status, period end, `deleted_at`, and `deleted_reason`.
+
+New accounts are `role=user` and `plan=free`. This slice does not call Stripe, so Stripe ids stay null and `plan` stays `free`. A user with `deleted_at` set cannot sign in. Why those choices were made is in [auth-decisions.md](auth-decisions.md).
 
 ## Day status
 
@@ -101,4 +107,4 @@ Pro, at $9.99 / month, adds:
 - Personalized challenges
 - Custom commitments
 
-Entitlement checks belong on the server once accounts exist. Until then, the frontend prototype can show the paywall with mock state.
+Entitlement checks for Pro routes belong on the server when billing exists. Accounts exist now, and every new subscription is Free. Stripe is not connected yet, so the API does not move anyone to Pro.
