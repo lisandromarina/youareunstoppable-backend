@@ -6,6 +6,25 @@ The backend provides the API used by the React frontend and will eventually hand
 
 ---
 
+## Current state
+
+The product is specified and not built. The only live route is `GET /api/hello`.
+
+PostgreSQL, SQLAlchemy, Google authentication, the AI coach, and Stripe are planned and not installed yet. The frontend prototype does not need new endpoints.
+
+---
+
+## Documentation
+
+| Doc | What it covers |
+| --- | --- |
+| [docs/domain.md](docs/domain.md) | Days, streaks, journal, coach, and Free vs Pro |
+| [docs/implementation.md](docs/implementation.md) | How to build the API, phases, and what exists today |
+
+Read those before adding routes.
+
+---
+
 ## Tech Stack
 
 * Python 3.12+
