@@ -1,0 +1,19 @@
+---
+description: YouAreUnstoppable domain and API constraints for the backend
+alwaysApply: true
+---
+
+# YouAreUnstoppable
+
+The unit is a day, not a habit. Streaks are derived from completed days.
+
+Before API work, read `docs/domain.md`, `docs/implementation.md`, and `docs/auth-decisions.md`.
+
+- Live routes are `GET /api/hello`, the `/api/auth/*` sign-in routes, and `GET /api/me`. Document a route only after the handler exists.
+- A user has one subscription row via `users.subscription_id`. New accounts are `plan=free` and `role=user`.
+- Do not call Stripe from auth. Checkout and webhooks are a later slice.
+- `users.deleted_at` closes the account. Sign-in rejects a closed user. `subscriptions.deleted_reason` is set only with `deleted_at`.
+- Google sign-in verifies an ID token against `GOOGLE_CLIENT_ID` and links a verified email onto the existing user.
+- The coach is short advice from identity and recent days, not a chat log.
+- Free stays useful. Pro is $9.99/month and adds the full year, history, plans, and coach.
+- Do not commit `.env` files or credentials.
