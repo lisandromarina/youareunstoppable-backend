@@ -27,13 +27,14 @@ A body that fails validation returns `422` with FastAPI's `detail` list. That co
 
 ## User
 
-Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. New accounts are `user` and `free`. Stripe fields on the subscription stay null until billing exists, and they are not in this response.
+Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. `has_password` is true when the account has a password. A Google-only account returns false until `POST /api/auth/password` succeeds. The password hash is not in this response. New accounts are `user` and `free`. Stripe fields on the subscription stay null until billing exists, and they are not in this response.
 
 ```json
 {
   "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "email": "ada@example.com",
   "role": "user",
+  "has_password": true,
   "last_connection": "2026-09-24T14:00:00Z",
   "subscription": {
     "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",

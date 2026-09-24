@@ -134,6 +134,7 @@ def to_user_response(user: User) -> UserResponse:
         id=user.id,
         email=user.email,
         role=user.role,
+        has_password=user.password_hash is not None,
         last_connection=user.last_connection,
         subscription={
             "id": subscription.id,

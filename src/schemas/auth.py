@@ -52,5 +52,6 @@ class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     role: Role
+    has_password: bool
     last_connection: datetime | None
     subscription: SubscriptionResponse

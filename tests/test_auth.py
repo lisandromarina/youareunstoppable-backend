@@ -48,6 +48,7 @@ def test_register_creates_free_subscription(client, db):
     payload = me.json()
     assert payload["email"] == "ada@example.com"
     assert payload["role"] == "user"
+    assert payload["has_password"] is True
     assert payload["subscription"]["plan"] == "free"
     assert payload["subscription"]["subscription_status"] is None
     assert payload["last_connection"] is not None
@@ -146,6 +147,7 @@ def test_google_creates_a_free_account_that_can_set_a_password(client, monkeypat
 
     me = client.get("/api/me")
     assert me.json()["subscription"]["plan"] == "free"
+    assert me.json()["has_password"] is False
 
     user = db.scalar(
         select(User).options(joinedload(User.subscription)).where(User.email == "grace@example.com")
@@ -162,6 +164,7 @@ def test_google_creates_a_free_account_that_can_set_a_password(client, monkeypat
 
     set_password = client.post("/api/auth/password", json={"password": "password123"})
     assert set_password.status_code == 204
+    assert client.get("/api/me").json()["has_password"] is True
 
     logged_in = client.post(
         "/api/auth/login",
