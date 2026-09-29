@@ -5,7 +5,18 @@ from sqlalchemy import engine_from_config, pool
 
 from src.core.config import get_settings
 from src.core.database import Base
-from src.models import RefreshToken, Subscription, User  # noqa: F401
+from src.models import (  # noqa: F401
+    Day,
+    DayCommitment,
+    PathPhase,
+    PlannedCommitment,
+    PlannedImplementation,
+    RefreshToken,
+    Subscription,
+    Transformation,
+    TransformationPath,
+    User,
+)
 
 config = context.config
 

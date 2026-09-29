@@ -1,11 +1,9 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
+from src.api.deps import ACCESS_COOKIE, current_user
 from src.core.config import get_settings
 from src.core.database import get_db
-from src.core.security import decode_access_token
 from src.schemas.auth import (
     GoogleRequest,
     LoginRequest,
@@ -16,7 +14,6 @@ from src.schemas.auth import (
 from src.services.auth import (
     AuthError,
     IssuedSession,
-    get_active_user,
     login_user,
     login_with_google,
     logout_user,
@@ -26,22 +23,10 @@ from src.services.auth import (
     to_user_response,
 )
 
-ACCESS_COOKIE = "access_token"
 REFRESH_COOKIE = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth"
 
 router = APIRouter()
-
-
-def current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get(ACCESS_COOKIE)
-    if not token:
-        raise AuthError(401, "Not authenticated.")
-    try:
-        user_id: UUID = decode_access_token(token)
-    except ValueError as exc:
-        raise AuthError(401, "Not authenticated.") from exc
-    return get_active_user(db, user_id)
 
 
 @router.post("/api/auth/register", response_model=UserResponse)

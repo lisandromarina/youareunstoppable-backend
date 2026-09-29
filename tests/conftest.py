@@ -14,7 +14,18 @@ from sqlalchemy.pool import StaticPool
 
 from src.core.database import Base, get_db
 from src.main import app
-from src.models import RefreshToken, Subscription, User  # noqa: F401
+from src.models import (  # noqa: F401
+    Day,
+    DayCommitment,
+    PathPhase,
+    PlannedCommitment,
+    PlannedImplementation,
+    RefreshToken,
+    Subscription,
+    Transformation,
+    TransformationPath,
+    User,
+)
 
 engine = create_engine(
     "sqlite://",
@@ -48,6 +59,13 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     with TestingSession() as db:
+        db.query(DayCommitment).delete()
+        db.query(Day).delete()
+        db.query(PlannedImplementation).delete()
+        db.query(PlannedCommitment).delete()
+        db.query(PathPhase).delete()
+        db.query(TransformationPath).delete()
+        db.query(Transformation).delete()
         db.query(RefreshToken).delete()
         db.query(Subscription).delete()
         db.query(User).delete()

@@ -4,7 +4,7 @@ How to build the API, and what exists now. Domain rules live in [domain.md](doma
 
 ## Current state
 
-Sign-in is live. Days, the journal, the coach, and Stripe are not.
+Sign-in is live. The transformation record is live: catalog, start, today, showed up, and reset. Journal, coach, Stripe, and an AI client are not.
 
 Installed today, from `requirements.txt`:
 
@@ -29,6 +29,15 @@ POST /api/auth/password
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/me
+GET  /api/catalog
+GET  /api/transformation
+POST /api/transformation
+PUT  /api/transformation
+DELETE /api/transformation
+POST /api/transformation/today/commitments/{commitment_id}/toggle
+POST /api/transformation/today/commitments/{commitment_id}/replace
+POST /api/transformation/today/commitments/{commitment_id}/skip
+POST /api/transformation/today/showed-up
 ```
 
 `GET /api/hello` still returns:
@@ -41,9 +50,9 @@ GET  /api/me
 
 Request bodies, cookies, and status codes are in [api.md](api.md). Register, login, Google sign-in, and refresh set HttpOnly cookies and return the user. New subscriptions have `plan` `free`.
 
-Not present yet: an AI client, Stripe Checkout, the billing portal, and webhooks.
+Not present yet: an AI client, Stripe Checkout, the billing portal, and webhooks. Premium will write the same transformation tables. It does not get its own goal or message tables.
 
-The choices behind this slice are in [auth-decisions.md](auth-decisions.md). Domain rules for days and plans are in [domain.md](domain.md).
+The choices behind sign-in are in [auth-decisions.md](auth-decisions.md). Domain rules for the path, the two streaks, and the year are in [domain.md](domain.md).
 
 ## Run
 
@@ -111,41 +120,41 @@ alembic upgrade head
 
 ### Accounts — now
 
-Email/password sign-in, Google sign-in, refresh tokens, and the user plus subscription tables. Modules:
+Email/password sign-in, Google sign-in, refresh tokens, and the user plus subscription tables. Stripe ids live on `subscriptions` and stay null. Do not add Checkout in this phase.
+
+### The record — now
+
+Curated identities and directions live in `src/domain/catalog.py`. Starting a transformation copies that path onto the user. Routes stay thin. `src/services/transformation.py` owns which commitments are due, schedule changes, promises kept, phase advance, and the year.
 
 ```text
 src/
 ├── main.py
 ├── api/
-│   └── auth.py
+│   ├── auth.py
+│   ├── deps.py
+│   └── transformation.py
+├── domain/
+│   └── catalog.py
 ├── models/
 ├── schemas/
-│   └── auth.py
+│   ├── auth.py
+│   └── transformation.py
 ├── services/
-│   └── auth.py
+│   ├── auth.py
+│   └── transformation.py
 └── core/
 ```
 
-Stripe ids live on `subscriptions` and stay null. Do not add Checkout in this phase.
+### Later — coach and billing
 
-### Phase 1 — frontend prototype
-
-The mobile prototype runs on mock data. It does not need new endpoints.
-
-### Phase 2 — the record
-
-Add transformations, days, and journal entries. Routes stay thin. `services/` will own streak length, day status, and the rates in [domain.md](domain.md).
-
-### Phase 3 — coach and billing
-
-Add the coach and Stripe. A later billing slice fills `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, and `plan` on the existing subscription row. Entitlements follow the Free and Pro list in [domain.md](domain.md).
+Add Stripe when billing exists. A later billing slice fills `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, and `plan` on the existing subscription row. A later AI writes `origin`, `rationale`, phases, and planned commitments on the transformation that already exists. Do not add a separate Premium record.
 
 ## Conventions
 
 - Functional style. Prefer plain functions over classes for route handlers and services.
 - Type hints on every function. Pydantic models for request and response bodies.
 - Early returns for error cases. Happy path last.
-- Expected auth failures raise `AuthError`. The app returns the same `detail` JSON as `HTTPException`.
+- Expected auth failures raise `AuthError`. Expected transformation failures raise `DomainError`. The app returns the same `detail` JSON as `HTTPException`.
 - Lowercase underscored module names.
 - Add a live route to the list under Current state, and describe the request and response in [api.md](api.md). Clients should not call a path that list does not include.
 

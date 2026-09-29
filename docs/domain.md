@@ -1,31 +1,48 @@
 # YouAreUnstoppable — Domain
 
-The rules the API will have to protect. Days, the journal, and the coach are specified and not built. Sign-in is live. This file does not list endpoints. The live contract is in [api.md](api.md).
+The rules the API protects. Sign-in is live. The transformation record is live. This file does not list endpoints. The live contract is in [api.md](api.md).
 
-The user-facing screens live in the frontend repo at `frontend/docs/experience.md`.
+There is no journal, no coach, and no evening check-in. Premium AI is not built. Free and a later Premium write the same tables. The product screens are in [product.md](product.md).
 
 ## The record
 
-A user has one transformation.
+One user has one transformation.
 
-A transformation has:
+A transformation is a copy of a path, not a pointer at the shared catalog. Free copies the catalog in when the user starts. A later AI can rewrite that same user's phases, objectives, and implementations. Closed days keep the text they were given when the day opened.
 
-- An identity: the selected traits, plus the future-self statement
-- A start date
-- A sequence of days
+The user chooses one or two identities, and one direction for each identity. The catalog supplies the phases and the commitments. The client does not send phase names, frequencies, or commitment text.
 
-A day has:
+Each path has four phases. A free phase is 14 show-up days. The length is stored on the phase, so a later path can use another length.
 
-- A calendar date
-- A day number counted from the start date
-- A set of commitments
-- A status
-- An optional feeling from the evening check-in
-- An optional journal note
+A day is a calendar date. It is open until the user shows up, then closed. A closed day is the block. The year is a view of those days. It is not a separate stored object.
 
-The journey grid is a view of those days. It is not a separate stored object.
+## Commitments
 
-The fundamental unit is the day. Schema and API names use day, commitment, transformation, and journey.
+A planned commitment has an objective and one or more implementations. The objective is the goal. The implementation is the action. Replace never changes the objective. Skip settles the current occurrence. It does not delete the schedule, and it does not count as done.
+
+Each commitment has a recurrence: `daily`, `times_per_week`, `weekly`, or `monthly`. Frequency is how often. The schedule is when: weekdays for weekly and several-times-a-week commitments, or a day of the month from 1 to 28. The free catalog sets the frequency. The user can change the days. A several-times-a-week commitment must keep exactly that many weekdays. A weekly commitment keeps one.
+
+The open day includes every current-phase commitment that is due on that date. A weekly commitment does not appear, and is not a miss, on the other days. Two identities keep their own due commitments.
+
+The set is chosen when the day opens. Changing the schedule updates an open day: a newly due commitment is added, and an open commitment that is no longer due is removed. A closed day is not rewritten. The day stores a snapshot of the objective and the chosen title.
+
+**I showed up** closes the day when every due commitment is done or skipped. Commitments that are not due do not block it. Closing the day advances every path.
+
+## Promises kept
+
+The product does not show a streak. `promises_kept` is the number of days the user has closed. A missed day does not reduce it. It is computed from closed days. It is not stored.
+
+`commitment_streak` is still stored on the path. It increments when the day closes. It resets to 0 when a day opens after a gap, and when that path is replaced. It does not decide which commitments are due, and it is not shown. A new phase does not reset it. After the last day of a phase, the path moves to day 1 of the next phase. After the last phase, the path stays on that phase and is marked complete. Later days still offer that phase's commitments.
+
+A missed calendar day does not consume a phase day.
+
+Completion, misses, skips, and momentum stay computable from days and day commitments. They are not stored as their own fields.
+
+## Changing the path
+
+An unchanged identity and direction keep their phase day and unlock streak. A new or changed path is copied again at day 1 with an unlock streak of 0. If today is still open, its commitments are rebuilt from the current plan. Closed days stay.
+
+Reset deletes the transformation, its paths, and its days. The account stays.
 
 ## Accounts
 
@@ -35,76 +52,22 @@ The user stores email, an optional password hash, an optional Google subject, ro
 
 New accounts are `role=user` and `plan=free`. This slice does not call Stripe, so Stripe ids stay null and `plan` stays `free`. A user with `deleted_at` set cannot sign in. Why those choices were made is in [auth-decisions.md](auth-decisions.md).
 
-## Day status
+## Origin
 
-| Status | Meaning |
+`transformations.origin` is `catalog` for a path copied from the catalog. The column also allows `adaptive`, for a path a later AI writes. `hybrid` is not a value yet. `rationale` and `context` are nullable and unused by the free routes. When a later recommendation replaces the reason, it must be appended, not overwritten. This slice stores a single `rationale` and does not add AI tables.
+
+## Year intensity
+
+The year is 1 January through 31 December of the client's year. A leap year includes 29 February. Each date is `0` to `2`. `intensity` counts the commitments that were due that day, across identities. A weekly or monthly commitment that was not due is not part of the day, so it cannot turn the day into a miss. `identities` uses the same scale for each identity on its own. A day that is still open counts too, so the current day changes as goals are checked.
+
+| Intensity | Meaning |
 | --- | --- |
-| Empty | Nothing recorded |
-| Started | At least one commitment is done, and the day is still open |
-| Completed | The day was closed after the required commitments |
-| Exceptional | A completed day that stood out. The prototype uses this as a stronger block. The exact rule can wait until insights exist. |
+| 0 | Nothing was completed. The day may be missing, still open, or closed with every commitment skipped |
+| 1 | At least one commitment was completed, and at least one was not |
+| 2 | Every commitment that day was completed |
 
-Completing the required commitments makes the day eligible to close. The evening check-in is what closes the day and appends the block to the journey. A missed day stays incomplete.
+`closed` is true when that calendar day was closed with "I showed up."
 
-## Streaks
+## Progress counts
 
-A streak is consecutive completed days.
-
-Current streak and longest streak are derived from the day sequence. They are not fields a client edits. A missed day ends the current streak. The longest streak is the maximum run of completed days since the transformation started.
-
-## Stats
-
-Define these once so the Journey labels and later API fields match.
-
-| Stat | Definition |
-| --- | --- |
-| Days completed | Count of days with status completed or exceptional |
-| Current streak | Length of the latest run of completed days, ending today if today is completed, otherwise ending yesterday |
-| Longest streak | Longest run of completed days |
-| Commitments completed | Completed commitments divided by commitments that were on the plan, across the history in view |
-| Days shown up | Days completed divided by days since the transformation started, including today |
-
-The prototype displays fixed figures for the fictional user: 187 completed days, a 23-day current streak, a 41-day longest streak, 87% commitments completed, and 73% days shown up, starting March 18, 2026. Those numbers are mock data until the API exists. When the API exists, the same definitions produce the numbers.
-
-## Journal
-
-A journal entry belongs to a day. The timeline on the Journal screen is those notes in date order. Closing a day can store the check-in line ("Today I realized…") as that day's note.
-
-## Coach
-
-The coach reads the identity and recent days and returns a short insight plus the four actions:
-
-- Plan tomorrow
-- I'm procrastinating
-- I'm losing motivation
-- Review my progress
-
-It is not a general chat log, and it is not the core record. The core record is the sequence of days.
-
-## Free and Pro
-
-Free stays genuinely useful:
-
-- Define who you're becoming
-- Daily commitments
-- Daily completion
-- Current streak
-- Monthly journey grid
-- Basic journal
-- 7-day history
-- Limited coaching
-
-Pro, at $9.99 / month, adds:
-
-- Full 365-day journey
-- Unlimited history
-- Personalized daily plans
-- The full transformation coach
-- Unlimited journal
-- Weekly transformation reviews
-- Advanced insights
-- Multiple transformation areas
-- Personalized challenges
-- Custom commitments
-
-Entitlement checks for Pro routes belong on the server when billing exists. Accounts exist now, and every new subscription is Free. Stripe is not connected yet, so the API does not move anyone to Pro.
+Commitments done and commitments total count closed days only, and only occurrences that came due. A future weekly or monthly commitment is not incomplete. A skip is part of the total and is not done. The phase name, day, and next phase on the progress block come from the first selected identity.
