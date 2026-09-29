@@ -17,6 +17,7 @@ from src.main import app
 from src.models import (  # noqa: F401
     Day,
     DayCommitment,
+    OnboardingStep,
     PathPhase,
     PlannedCommitment,
     PlannedImplementation,
@@ -67,6 +68,7 @@ def client() -> Generator[TestClient, None, None]:
         db.query(TransformationPath).delete()
         db.query(Transformation).delete()
         db.query(RefreshToken).delete()
+        db.query(OnboardingStep).delete()
         db.query(Subscription).delete()
         db.query(User).delete()
         db.commit()

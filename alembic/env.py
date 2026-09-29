@@ -8,6 +8,7 @@ from src.core.database import Base
 from src.models import (  # noqa: F401
     Day,
     DayCommitment,
+    OnboardingStep,
     PathPhase,
     PlannedCommitment,
     PlannedImplementation,
