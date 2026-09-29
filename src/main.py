@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from src.api.admin import router as admin_router
 from src.api.auth import router as auth_router
 from src.api.transformation import router as transformation_router
 from src.services.auth import AuthError
@@ -8,6 +9,7 @@ from src.services.errors import DomainError
 
 app = FastAPI()
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(transformation_router)
 
 

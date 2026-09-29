@@ -1,3 +1,4 @@
+from src.models.onboarding import OnboardingStep
 from src.models.refresh_token import RefreshToken
 from src.models.subscription import Subscription
 from src.models.transformation import (
@@ -14,6 +15,7 @@ from src.models.user import User
 __all__ = [
     "Day",
     "DayCommitment",
+    "OnboardingStep",
     "PathPhase",
     "PlannedCommitment",
     "PlannedImplementation",
