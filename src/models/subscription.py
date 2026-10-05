@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, String, Text, Uuid
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -33,6 +33,7 @@ class Subscription(Base):
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False)
     plan: Mapped[Plan] = mapped_column(
         Enum(Plan, name="subscription_plan", native_enum=False, length=16),
         default=Plan.free,

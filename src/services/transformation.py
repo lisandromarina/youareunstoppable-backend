@@ -35,12 +35,17 @@ from src.schemas.transformation import (
     SelectionResponse,
     TodayGroupResponse,
     TodayResponse,
+    TomorrowItemResponse,
     TransformationResponse,
     UpcomingResponse,
     YearDayResponse,
     YearIdentityResponse,
 )
 from src.services.errors import DomainError
+
+
+PROGRESS_DAYS_TO_GAIN = 3
+MISS_DAYS_TO_LOSE = 2
 
 
 def read_transformation(db: Session, user: User, on: date) -> TransformationResponse:
@@ -107,7 +112,7 @@ def update_transformation(
     db.flush()
 
     if day is not None and _status(day.status) == DayStatus.open.value:
-        _schedule(day, transformation.paths)
+        _schedule(day, transformation)
     return _finish(db, user.id, on)
 
 
@@ -234,7 +239,7 @@ def set_schedule(
     _apply_schedule(planned, weekdays, month_day)
     day = _find_day(transformation, on)
     if day is not None and _status(day.status) == DayStatus.open.value:
-        _sync_occurrence(day, path, planned)
+        _sync_occurrence(day, transformation, path, planned)
     return _finish(db, user.id, on)
 
 
@@ -336,20 +341,20 @@ def _ensure_today(db: Session, transformation: Transformation, on: date) -> Day:
     existing = _find_day(transformation, on)
     if existing is not None:
         if _status(existing.status) == DayStatus.open.value:
-            _reconcile_open_day(existing, transformation.paths)
+            _reconcile_open_day(existing, transformation)
         return existing
     _reset_unlock_if_gap(transformation, on)
     day = Day(calendar_date=on, status=DayStatus.open)
     transformation.days.append(day)
-    _schedule(day, transformation.paths)
+    _schedule(day, transformation)
     db.flush()
     return day
 
 
-def _schedule(day: Day, paths: list[TransformationPath]) -> None:
+def _schedule(day: Day, transformation: Transformation) -> None:
     on = _as_date(day.calendar_date)
-    for path in sorted(paths, key=lambda item: item.sort_order):
-        for planned in _due_commitments(path, on):
+    for path in sorted(transformation.paths, key=lambda item: item.sort_order):
+        for planned in _due_commitments(path, transformation, on):
             _append_occurrence(day, path, planned)
 
 
@@ -367,14 +372,63 @@ def _append_occurrence(day: Day, path: TransformationPath, planned: PlannedCommi
     )
 
 
-def _due_commitments(path: TransformationPath, on: date) -> list[PlannedCommitment]:
-    phase = _phase_at(path, path.current_phase_position)
-    if phase is None:
-        raise DomainError(500, "The current phase is missing.")
-    planned = sorted(phase.commitments, key=lambda item: item.position)
-    if not planned:
-        raise DomainError(500, "This phase has no commitment.")
-    return [item for item in planned if _is_due(on, item)]
+def _ordered_commitments(path: TransformationPath) -> list[PlannedCommitment]:
+    rows: list[PlannedCommitment] = []
+    for phase in sorted(path.phases, key=lambda item: item.position):
+        rows.extend(sorted(phase.commitments, key=lambda item: item.position))
+    return rows
+
+
+def _made_progress(path: TransformationPath, transformation: Transformation, on: date) -> bool:
+    day = _find_day(transformation, on)
+    if day is None:
+        return False
+    return any(
+        item.path_id == path.id and _status(item.status) == CommitmentStatus.done.value
+        for item in day.commitments
+    )
+
+
+def _active_limit(path: TransformationPath, transformation: Transformation, on: date) -> int:
+    ordered = _ordered_commitments(path)
+    if not ordered:
+        raise DomainError(500, "This path has no commitment.")
+    active = 1
+    progress_run = 0
+    miss_run = 0
+    day = _as_date(transformation.started_on)
+    while day < on:
+        if _made_progress(path, transformation, day):
+            miss_run = 0
+            progress_run += 1
+            if progress_run >= PROGRESS_DAYS_TO_GAIN:
+                if active < len(ordered):
+                    active += 1
+                progress_run = 0
+        else:
+            progress_run = 0
+            miss_run += 1
+            if miss_run >= MISS_DAYS_TO_LOSE:
+                active = max(1, active - 1)
+                miss_run = 0
+        day += timedelta(days=1)
+    return active
+
+
+def _active_commitments(
+    path: TransformationPath,
+    transformation: Transformation,
+    on: date,
+) -> list[PlannedCommitment]:
+    return _ordered_commitments(path)[: _active_limit(path, transformation, on)]
+
+
+def _due_commitments(
+    path: TransformationPath,
+    transformation: Transformation,
+    on: date,
+) -> list[PlannedCommitment]:
+    return [item for item in _active_commitments(path, transformation, on) if _is_due(on, item)]
 
 
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -416,17 +470,18 @@ def _when(planned: PlannedCommitment) -> str:
     return ", ".join(names)
 
 
-def _coming_up(day: Day, paths: list[TransformationPath]) -> list[UpcomingResponse]:
+def _coming_up(
+    day: Day,
+    transformation: Transformation,
+    paths: list[TransformationPath],
+) -> list[UpcomingResponse]:
     on = _as_date(day.calendar_date)
     present = {item.planned_commitment_id for item in day.commitments}
     rows: list[UpcomingResponse] = []
     for path in paths:
-        phase = _phase_at(path, path.current_phase_position)
-        if phase is None:
-            continue
         identity = find_identity(path.identity_id)
         identity_name = identity.name if identity is not None else path.identity_id
-        for planned in sorted(phase.commitments, key=lambda item: item.position):
+        for planned in _active_commitments(path, transformation, on):
             if planned.id in present or _is_due(on, planned):
                 continue
             chosen = _default_implementation(planned)
@@ -484,11 +539,11 @@ def _apply_schedule(
     planned.weekdays = chosen
 
 
-def _reconcile_open_day(day: Day, paths: list[TransformationPath]) -> None:
+def _reconcile_open_day(day: Day, transformation: Transformation) -> None:
     on = _as_date(day.calendar_date)
     due: dict[UUID, tuple[TransformationPath, PlannedCommitment]] = {}
-    for path in paths:
-        for planned in _due_commitments(path, on):
+    for path in transformation.paths:
+        for planned in _due_commitments(path, transformation, on):
             due[planned.id] = (path, planned)
             if not any(item.planned_commitment_id == planned.id for item in day.commitments):
                 _append_occurrence(day, path, planned)
@@ -497,10 +552,16 @@ def _reconcile_open_day(day: Day, paths: list[TransformationPath]) -> None:
             day.commitments.remove(item)
 
 
-def _sync_occurrence(day: Day, path: TransformationPath, planned: PlannedCommitment) -> None:
+def _sync_occurrence(
+    day: Day,
+    transformation: Transformation,
+    path: TransformationPath,
+    planned: PlannedCommitment,
+) -> None:
     on = _as_date(day.calendar_date)
     existing = [item for item in day.commitments if item.planned_commitment_id == planned.id]
-    if _is_due(on, planned):
+    active = {item.id for item in _active_commitments(path, transformation, on)}
+    if planned.id in active and _is_due(on, planned):
         if not existing:
             _append_occurrence(day, path, planned)
         return
@@ -570,7 +631,7 @@ def _present(transformation: Transformation, on: date) -> TransformationResponse
     return TransformationResponse(
         statement=_statement(names),
         selections=selections,
-        today=_today(day, paths),
+        today=_today(day, transformation, paths),
         progress=ProgressResponse(
             phase_name=phase.headline,
             day_in_phase=first.day_in_phase,
@@ -581,6 +642,8 @@ def _present(transformation: Transformation, on: date) -> TransformationResponse
         ),
         year=_year(transformation, on),
         promises_kept=_promises_kept(transformation),
+        tomorrow=_tomorrow(transformation, paths, on),
+        prior_closed_on=_prior_closed_on(transformation, on),
     )
 
 
@@ -621,7 +684,7 @@ def _phase_response(path: TransformationPath, phase: PathPhase) -> PhaseResponse
     )
 
 
-def _today(day: Day, paths: list[TransformationPath]) -> TodayResponse:
+def _today(day: Day, transformation: Transformation, paths: list[TransformationPath]) -> TodayResponse:
     groups = []
     for path in paths:
         identity = find_identity(path.identity_id)
@@ -638,7 +701,7 @@ def _today(day: Day, paths: list[TransformationPath]) -> TodayResponse:
         date=_as_date(day.calendar_date),
         closed=_status(day.status) == DayStatus.closed.value,
         groups=groups,
-        coming_up=_coming_up(day, paths),
+        coming_up=_coming_up(day, transformation, paths),
     )
 
 
@@ -728,6 +791,39 @@ def _commitment_counts(transformation: Transformation) -> tuple[int, int]:
 
 def _promises_kept(transformation: Transformation) -> int:
     return sum(1 for day in transformation.days if _status(day.status) == DayStatus.closed.value)
+
+
+def _prior_closed_on(transformation: Transformation, on: date) -> date | None:
+    closed = [
+        _as_date(day.calendar_date)
+        for day in transformation.days
+        if _status(day.status) == DayStatus.closed.value and _as_date(day.calendar_date) < on
+    ]
+    if not closed:
+        return None
+    return max(closed)
+
+
+def _tomorrow(
+    transformation: Transformation,
+    paths: list[TransformationPath],
+    on: date,
+) -> list[TomorrowItemResponse]:
+    target = on + timedelta(days=1)
+    rows: list[TomorrowItemResponse] = []
+    for path in paths:
+        identity = find_identity(path.identity_id)
+        identity_name = identity.name if identity is not None else path.identity_id
+        for planned in _due_commitments(path, transformation, target):
+            chosen = _default_implementation(planned)
+            rows.append(
+                TomorrowItemResponse(
+                    identity_name=identity_name,
+                    title=chosen.title,
+                    cadence=_cadence(planned),
+                )
+            )
+    return rows
 
 
 def _load(db: Session, user_id: UUID) -> Transformation | None:

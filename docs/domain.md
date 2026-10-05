@@ -22,7 +22,11 @@ A planned commitment has an objective and one or more implementations. The objec
 
 Each commitment has a recurrence: `daily`, `times_per_week`, `weekly`, or `monthly`. Frequency is how often. The schedule is when: weekdays for weekly and several-times-a-week commitments, or a day of the month from 1 to 28. The free catalog sets the frequency. The user can change the days. A several-times-a-week commitment must keep exactly that many weekdays. A weekly commitment keeps one.
 
-The open day includes every current-phase commitment that is due on that date. A weekly commitment does not appear, and is not a miss, on the other days. Two identities keep their own due commitments.
+A path starts with one active goal, the first commitment in catalog order. Later commitments stay hidden until they are earned. Each identity keeps its own count.
+
+A progress day is a calendar day with at least one of that path's goals marked done. Skip does not count. Three progress days in a row add the next catalog goal, up to the last one on the path. The new goal is due starting the next day. One day with nothing done breaks that run and does not remove a goal. Two of those days in a row remove the most recently added goal. The count never drops below one.
+
+The open day includes every active goal that is due on that date. A weekly goal does not appear, and is not a miss, on the other days.
 
 The set is chosen when the day opens. Changing the schedule updates an open day: a newly due commitment is added, and an open commitment that is no longer due is removed. A closed day is not rewritten. The day stores a snapshot of the objective and the chosen title.
 
@@ -32,9 +36,9 @@ The set is chosen when the day opens. Changing the schedule updates an open day:
 
 The product does not show a streak. `promises_kept` is the number of days the user has closed. A missed day does not reduce it. It is computed from closed days. It is not stored.
 
-`commitment_streak` is still stored on the path. It increments when the day closes. It resets to 0 when a day opens after a gap, and when that path is replaced. It does not decide which commitments are due, and it is not shown. A new phase does not reset it. After the last day of a phase, the path moves to day 1 of the next phase. After the last phase, the path stays on that phase and is marked complete. Later days still offer that phase's commitments.
+`commitment_streak` is still stored on the path. It increments when the day closes. It resets to 0 when a day opens after a gap, and when that path is replaced. It does not decide which goals are active, and it is not shown. A new phase does not reset it. After the last day of a phase, the path moves to day 1 of the next phase. After the last phase, the path stays on that phase and is marked complete. Phase position does not add or remove goals.
 
-A missed calendar day does not consume a phase day.
+A missed calendar day does not consume a phase day. The read model exposes `prior_closed_on` so the client can recognize that gap, and `tomorrow` so a closed day can show the commitments due the next calendar day. Neither one erases promises already kept.
 
 Completion, misses, skips, and momentum stay computable from days and day commitments. They are not stored as their own fields.
 

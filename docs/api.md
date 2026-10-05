@@ -1,6 +1,6 @@
 # API
 
-The routes that exist today. Why the session works this way is in [auth-decisions.md](auth-decisions.md). Days, the journal, the coach, and Stripe are not in this file.
+The routes that exist today. Why the session works this way is in [auth-decisions.md](auth-decisions.md). Days, the journal, and the coach are not in this file.
 
 The interactive page is `http://localhost:8000/docs` while the API is running. The OpenAPI document is `http://localhost:8000/openapi.json`.
 
@@ -27,7 +27,7 @@ A body that fails validation returns `422` with FastAPI's `detail` list. That co
 
 ## User
 
-Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. `has_password` is true when the account has a password. A Google-only account returns false until `POST /api/auth/password` succeeds. The password hash is not in this response. New accounts are `user` and `free`. Stripe fields on the subscription stay null until billing exists, and they are not in this response.
+Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. `has_password` is true when the account has a password. A Google-only account returns false until `POST /api/auth/password` succeeds. The password hash is not in this response. New accounts are `user` and `free`. `plan` is `pro` when Stripe's status is `active`, `trialing`, or `past_due`. `cancel_at_period_end` is true when a cancel is scheduled and access still lasts through `current_period_end`. Stripe customer and subscription ids stay in the database and are not in this response.
 
 ```json
 {
@@ -41,6 +41,7 @@ Register, login, Google sign-in, refresh, and `GET /api/me` return this object. 
     "plan": "free",
     "subscription_status": null,
     "current_period_end": null,
+    "cancel_at_period_end": false,
     "deleted_at": null,
     "deleted_reason": null
   }
@@ -195,9 +196,11 @@ The catalog is the free template. Starting or replacing a transformation copies 
 
 `selections` has one entry per identity, at most two. `phase_name` is the current headline. `stage_name` is the journey label. `phases` marks each phase `complete`, `current`, or `upcoming`. `active_commitments` is how many commitments that identity has today.
 
-`today.groups` lists the commitments that are due that day, under each identity. `objective` is the goal. `cadence` is the frequency label. `implementation` is the chosen way. `implementations` are the other ways to meet the same goal. `status` is `open`, `done`, or `skipped`. `coming_up` lists current-phase commitments that are not due that day, with `when` for the chosen schedule.
+`today.groups` lists the active goals that are due that day, under each identity. A path starts with one goal. Three days in a row with at least one goal done add the next one on the following day. Two days in a row with none done remove the latest one, and the count stays at least one. `objective` is the goal. `cadence` is the frequency label. `implementation` is the chosen way. `implementations` are the other ways to meet the same goal. `status` is `open`, `done`, or `skipped`. `coming_up` lists active goals that are not due that day, with `when` for the chosen schedule.
 
 `promises_kept` is how many days have been closed. A missed day does not reduce it. The product does not show a streak.
+
+`tomorrow` lists the active goals due the day after `on`, including a goal earned by marking one done today. Each item has `identity_name`, `title`, and `cadence`. `prior_closed_on` is the latest closed date before `on`, or null when no earlier day has been closed. A gap before today does not remove those days.
 
 `progress` uses the first identity. `commitments_done` and `commitments_total` count closed days only, and only occurrences that were due.
 
@@ -302,4 +305,54 @@ Query: `on`. No body.
 `409` when any due commitment is still `open`: `Finish or skip every commitment first.`
 
 `409` when the day is already closed: `This day is already closed.`
+
+## POST /api/billing/checkout
+
+Requires the `access_token` cookie. No body.
+
+`200` returns a Stripe Checkout URL for the monthly price.
+
+```json
+{ "url": "https://checkout.stripe.com/c/pay/cs_test_..." }
+```
+
+Signup does not call Stripe. The first checkout creates a Stripe Customer and stores `stripe_customer_id`. The browser goes to `url`. Returning to `/profile` does not by itself set `plan` to `pro`. The webhook does that.
+
+`409` when the status is already `active`, `trialing`, or `past_due`: `This account already has Pro.` A scheduled cancel is still `active`, so that person uses the portal.
+
+`503` when billing settings are missing: `Billing is not configured.`
+
+## POST /api/billing/portal
+
+Requires the `access_token` cookie. No body.
+
+`200` returns a Stripe Customer Portal URL.
+
+```json
+{ "url": "https://billing.stripe.com/p/session/..." }
+```
+
+`409` when this account has no Stripe customer yet: `Billing is not set up for this account.`
+
+`503` when billing settings are missing: `Billing is not configured.`
+
+## POST /api/billing/webhook
+
+No session cookie. Stripe sends the raw body and a `Stripe-Signature` header. The API checks that signature before it reads the event.
+
+`200` acknowledges the event.
+
+```json
+{ "received": true }
+```
+
+Handled events are `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`. The row is found by `metadata.user_id`, then by `stripe_customer_id`. Applying the same subscription twice writes the same fields.
+
+`plan` becomes `pro` when the Stripe status is `active`, `trialing`, or `past_due`. Every other status sets `plan` to `free`. `cancel_at_period_end` is stored on its own and does not change `plan`. A scheduled cancel stays `pro` until `customer.subscription.deleted`. That event sets `plan` to `free`, sets `cancel_at_period_end` to false, clears `stripe_subscription_id`, and keeps `stripe_customer_id`. The subscription row is not soft-deleted.
+
+A valid event that matches no row is logged and still returns `200`.
+
+`400` when the signature is missing or wrong: `Webhook signature is not valid.`
+
+`503` when the webhook secret is missing: `Billing is not configured.`
 

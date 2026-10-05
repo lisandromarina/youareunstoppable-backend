@@ -4,7 +4,7 @@ How to build the API, and what exists now. Domain rules live in [domain.md](doma
 
 ## Current state
 
-Sign-in is live. The transformation record is live: catalog, start, today, showed up, and reset. Journal, coach, Stripe, and an AI client are not.
+Sign-in is live. The transformation record is live: catalog, start, today, showed up, and reset. Monthly billing is live: Checkout, the Customer Portal, and webhooks write the existing subscription row. Journal, coach, and an AI client are not. Pro does not unlock a separate product yet.
 
 Installed today, from `requirements.txt`:
 
@@ -17,6 +17,7 @@ Installed today, from `requirements.txt`:
 - Argon2 password hashes
 - PyJWT
 - Google auth, used to verify ID tokens
+- Stripe, used for Checkout, the Customer Portal, and webhooks
 
 Live routes:
 
@@ -29,6 +30,9 @@ POST /api/auth/password
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/me
+POST /api/billing/checkout
+POST /api/billing/portal
+POST /api/billing/webhook
 GET  /api/catalog
 GET  /api/transformation
 POST /api/transformation
@@ -48,9 +52,9 @@ POST /api/transformation/today/showed-up
 }
 ```
 
-Request bodies, cookies, and status codes are in [api.md](api.md). Register, login, Google sign-in, and refresh set HttpOnly cookies and return the user. New subscriptions have `plan` `free`.
+Request bodies, cookies, and status codes are in [api.md](api.md). Register, login, Google sign-in, and refresh set HttpOnly cookies and return the user. New subscriptions have `plan` `free`. Checkout does not run at signup. A webhook is what sets `plan` to `pro`.
 
-Not present yet: an AI client, Stripe Checkout, the billing portal, and webhooks. Premium will write the same transformation tables. It does not get its own goal or message tables.
+Not present yet: an AI client. Premium will write the same transformation tables. It does not get its own goal or message tables. This billing slice does not gate Today, Journey, or Progress.
 
 The choices behind sign-in are in [auth-decisions.md](auth-decisions.md). Domain rules for the path, the two streaks, and the year are in [domain.md](domain.md).
 
@@ -97,10 +101,20 @@ GOOGLE_CLIENT_ID=
 
 `GOOGLE_CLIENT_ID` is required for Google sign-in. Email and password sign-in works without it. Leave `COOKIE_SECURE` unset for local HTTP. Set it to true when the API is served over HTTPS.
 
-Later services will add:
+Billing reads these when Checkout, the portal, or a webhook runs. The API still boots if they are empty. Checkout and the portal then return `503`.
 
 ```text
 STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_ID=
+FRONTEND_ORIGIN=
+```
+
+`STRIPE_PRICE_ID` is the monthly Price id from the Stripe Dashboard. `FRONTEND_ORIGIN` is the web app origin, `http://localhost:5173` locally. Point the Stripe webhook at `POST /api/billing/webhook` on the API host. Locally, forward with the Stripe CLI to `http://localhost:8000/api/billing/webhook`.
+
+Later services will add:
+
+```text
 AI_API_KEY=
 ```
 
@@ -120,7 +134,7 @@ alembic upgrade head
 
 ### Accounts — now
 
-Email/password sign-in, Google sign-in, refresh tokens, and the user plus subscription tables. Stripe ids live on `subscriptions` and stay null. Do not add Checkout in this phase.
+Email/password sign-in, Google sign-in, refresh tokens, and the user plus subscription tables. Signup still inserts `plan=free` and does not call Stripe.
 
 ### The record — now
 
@@ -131,6 +145,7 @@ src/
 ├── main.py
 ├── api/
 │   ├── auth.py
+│   ├── billing.py
 │   ├── deps.py
 │   └── transformation.py
 ├── domain/
@@ -138,16 +153,22 @@ src/
 ├── models/
 ├── schemas/
 │   ├── auth.py
+│   ├── billing.py
 │   └── transformation.py
 ├── services/
 │   ├── auth.py
+│   ├── billing.py
 │   └── transformation.py
 └── core/
 ```
 
-### Later — coach and billing
+### Billing — now
 
-Add Stripe when billing exists. A later billing slice fills `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, and `plan` on the existing subscription row. A later AI writes `origin`, `rationale`, phases, and planned commitments on the transformation that already exists. Do not add a separate Premium record.
+`POST /api/billing/checkout` and `POST /api/billing/portal` are signed in. `POST /api/billing/webhook` is not. The webhook verifies `Stripe-Signature` on the raw body. `apply_subscription` sets `plan=pro` only when Stripe's status is `active`, `trialing`, or `past_due`. A scheduled cancel is still `active` with `cancel_at_period_end` true, so Pro lasts through `current_period_end`. `customer.subscription.deleted` sets `plan=free`, clears `cancel_at_period_end` and `stripe_subscription_id`, and keeps `stripe_customer_id`. A valid event that matches no row returns 200. Stripe customer and subscription ids stay off `GET /api/me`.
+
+### Later — coach
+
+A later AI writes `origin`, `rationale`, phases, and planned commitments on the transformation that already exists. Do not add a separate Premium record. Do not add an `is_premium` column. When that path exists, Pro access is `plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`.
 
 ## Conventions
 

@@ -105,15 +105,15 @@ Current Phase
 
 Keep One Promise
 
-Goals and Commitments
+Goals
 
-Goal: Build consistent focus
+Every identity starts with one goal, the first commitment on that direction.
 
-Daily: 15 minutes of uninterrupted work
+First day
 
-Daily: Keep the phone away during the first focused work block
+15 minutes of uninterrupted work
 
-Weekly: Review what most often interrupted focus
+The next catalog goal is added after three days in a row with at least one goal marked done. It is due starting the next day. Two days in a row with nothing done remove the newest goal. The list never drops below one.
 
 The free experience should be completely useful on its own.
 
@@ -207,7 +207,7 @@ The AI should explain why the path was recommended.
 
 2. Personalized Goals
 
-Free users receive predefined goals.
+Free users receive predefined goals. Each identity starts with one, and earns the rest by showing up.
 
 Premium users can describe what they actually want to accomplish.
 
@@ -305,9 +305,9 @@ The user can personalize how they accomplish the goal, without losing what the g
 
 Phase Duration and Commitment Recurrence
 
-Phases do not all have the same length. Each phase has a purpose, and its recommended duration should reflect that purpose. Some phases may be short introductions; others may take several weeks or longer. The product should not frame the overall experience as a fixed 14-day challenge or require users to race a countdown.
+In the free catalog, each phase is 14 days the user closes with I showed up. A missed calendar day does not consume a phase day. The screen shows the day inside the phase and “About 14 days” as guidance, not as a race. After the last phase, the path stays on that phase and is marked complete. Moving to the next phase does not add or remove goals.
 
-A phase may store an optional recommended duration for planning and content design. The user-facing experience should emphasize the phase's objective and the days the user has shown up. Progression can be based on the curated program in Free, while Premium may eventually recommend adjustments based on consistency, difficulty, and progress.
+Premium may later recommend a different length. The length is stored on the phase, so a later path can use another length. The user-facing experience should emphasize the phase's purpose and the days the user has shown up.
 
 Goals vs. Commitments
 
@@ -320,6 +320,20 @@ Recurrence: when a commitment is due. Supported examples include daily, selected
 Schedule: the specific days or dates on which a recurring commitment should occur.
 
 Due occurrence: the specific instance of a recurring commitment that applies to a date.
+
+Earning goals
+
+The same rule applies to every identity. Disciplined, Healthy, Focused, and the rest each keep their own count.
+
+A path starts with one active goal, the first commitment in catalog order. Later commitments stay hidden until they are earned. Earning walks the whole direction in order, including goals that belong to later phases. Finishing a phase does not swap the list.
+
+A progress day is a calendar day with at least one of that identity's goals marked done. Skip does not count. The day does not have to be closed with I showed up.
+
+Three progress days in a row add the next catalog goal, up to the last one on the path. The new goal is due starting the next day.
+
+One calendar day with nothing done breaks that run and does not remove a goal. Two of those days in a row remove the most recently added goal. The count never drops below one. A day the user never opens counts as empty.
+
+Only active goals that are due that day appear on Today. An earned goal that falls on another weekday appears under Coming up. The user can change its days there.
 
 Flexible Scheduling
 
@@ -389,7 +403,7 @@ Core Concept: The Day
 
 The fundamental unit of the product is the DAY, not the habit or the individual task.
 
-Goals can have multiple commitments with different recurrence schedules: daily, several times per week, weekly, monthly, or on selected days. The system determines which commitments are due on a given day.
+Each identity starts with one goal. More goals are earned over time, and each one has its own recurrence: daily, several times a week, weekly, or monthly. The system determines which active goals are due on a given day.
 
 A user does not primarily think:
 
@@ -399,11 +413,11 @@ They think:
 
 "I showed up today."
 
-When all daily commitments are complete, the user presses:
+When every goal due today is done or skipped, the user presses:
 
 I SHOWED UP
 
-This adds a block to their transformation.
+This adds a block to their transformation. Goals that are not due today do not block it. Closing the day also advances every path by one phase day.
 
 The block represents a day where they followed through.
 
@@ -445,6 +459,8 @@ childish gamification
 
 Onboarding
 
+A person arrives at the invite, then registers or signs in with email or Google. The transformation itself is stored on the account. Begin is the first screen after that.
+
 The onboarding should answer one question per screen.
 
 Screen 1 — Promise
@@ -467,7 +483,7 @@ Headline:
 
 Who are you becoming?
 
-Allow multiple identities.
+Choose one or two.
 
 Examples:
 
@@ -491,9 +507,7 @@ Mentally Resilient
 
 Productive
 
-Selected identities should update a live statement.
-
-Example:
+The chosen names update a live statement. One identity reads “I’m becoming disciplined.” Two read:
 
 I'm becoming disciplined and healthy.
 
@@ -503,7 +517,7 @@ Continue
 
 Screen 3 — Direction
 
-The selected identity determines available directions.
+One direction for each chosen identity. The identity determines which directions are offered.
 
 Example:
 
@@ -587,7 +601,7 @@ The first phase is active.
 
 Future phases are muted or locked.
 
-Each phase has a clear purpose and can have a different recommended duration. The product should not force every phase into the same length or frame the experience as a fixed-duration challenge. A phase's duration is guidance for the program, not the central motivation.
+Each free phase is 14 show-up days. The length is guidance beside the phase, not a countdown to race. Changing phase does not change which goals are active.
 
 Display:
 
@@ -595,13 +609,15 @@ Your first phase
 
 Keep One Promise
 
-Build the ability to follow through.
+About 14 days.
 
 One day at a time.
 
 CTA:
 
 Start my transformation
+
+Editing an existing path uses the same screen. The button reads Update my path. An identity and direction that did not change keep their phase day. A new or changed path starts again at day 1. Closed days stay.
 
 Main Navigation
 
@@ -620,59 +636,51 @@ This is the most important screen.
 
 Display:
 
-DAY 7
+Day 7
 
 7 days you kept promises to yourself
 
 I'm becoming disciplined and healthy.
 
-Current phase:
-
 Keep One Promise
 
-Day 7
+About 14 days
 
-Show a simple progress indicator for the current phase without requiring a fixed total-day countdown. If a phase has a recommended duration, it can be shown subtly as guidance, not as the main measure of progress.
+A thin bar shows the day inside the phase. The phase length is guidance beside the day, not a countdown. After a gap, the screen opens with:
+
+You're back.
+
+Nothing was lost.
 
 Goals and Commitments
 
-Goals describe the outcome or behavior the user is working toward. Commitments are the concrete actions that move the goal forward, each with its own cadence.
+Each identity is listed on its own. Under it, only the active goals that are due today. A goal is the objective. The line under it is the action, with its cadence.
 
-A goal may contain daily, weekly, monthly, or custom-scheduled commitments. Not every commitment should appear every day. Each commitment has its own recurrence and schedule.
+On the first day there is one goal per identity. Later days can show more, once they have been earned, and only on the days that goal is scheduled.
 
-When a commitment occurs multiple times per week, the user can select the exact weekdays. The system should validate that the selected number of days matches the requested frequency. For example, a 3-times-per-week commitment can be scheduled for Monday, Wednesday, and Friday. The schedule controls which days the commitment is due; unselected days are not missed days.
-
-Example:
+Example, early in the path:
 
 DISCIPLINED
 
-Goal: Keep my environment organized
+Work without interruption
 
-○ Daily — Make your bed after waking
+○ Daily — 15 minutes of uninterrupted work
 
-○ Weekly — Clean your workspace
+Coming up, after the next goal is earned and it is not due today:
 
-○ Monthly — Deep-clean your room
+3 times per week — Open the work and stay with it for 15 minutes
 
-Goal: Protect my focus
-
-○ Daily — Complete 15 minutes of uninterrupted work
-
-○ Weekly — Review my biggest distractions
+Monday, Wednesday, Friday
 
 HEALTHY
 
-Goal: Move consistently
+Move your body
 
-○ 3 times per week — Move your body for 20 minutes
-
-Goal: Eat with intention
-
-○ Weekly — Plan groceries for the upcoming week
+○ Daily — Walk for 20 minutes
 
 Each due commitment should have a large tappable circle. Tapping the circle or text toggles completion. Do not make the interaction feel like a standard productivity checkbox; it should feel deliberate and tactile.
 
-Only show commitments that are due today in the primary Today list. Upcoming weekly or monthly commitments may appear in a compact “This week” or “Coming up” section when useful, without overwhelming the screen.
+Coming up lists earned goals that are not due today. Tapping one opens the day picker. A three-times-a-week goal must keep exactly three weekdays. A weekly goal keeps one. A monthly goal keeps a day from 1 to 28. Days that are not selected are not misses.
 
 Commitment Actions
 
@@ -746,7 +754,7 @@ At the bottom of Today:
 
 I SHOWED UP
 
-The button becomes available when the user has completed or explicitly handled all commitments due today, according to the product's completion rules. Commitments that are not due today must not block daily completion.
+The button becomes available when every goal due today is done or skipped. Goals that are not due today do not block it. Closing the day advances every path by one phase day. It does not add or remove goals.
 
 Once today's commitments are handled, I SHOWED UP becomes the dominant action.
 
@@ -754,31 +762,33 @@ Nothing else should compete with it.
 
 Day Complete
 
-After pressing I SHOWED UP, transition into a dedicated full-screen experience.
+After pressing I SHOWED UP, open a full screen.
 
-Dark background.
+When a phase has just finished:
 
-A large glowing transformation block appears.
+Foundation complete.
 
-Text:
+14 days of Keep One Promise.
 
-You showed up.
+You don't need to start over.
 
-Then:
+You move forward.
 
-Another block added.
+Next phase
 
-Show phase progress:
+Consistency
 
-███████░░░░░░
+When the day simply closed:
 
-Then:
+Day complete
 
-Day 7
+You kept today's promises.
+
+Then the goals due tomorrow.
 
 CTA:
 
-Keep going
+Done for today
 
 The moment should be quiet and meaningful.
 
@@ -800,7 +810,7 @@ JOURNEY
 
 Journey visually represents the user's transformation.
 
-If multiple identities are selected, show each path.
+If two identities are selected, show each path.
 
 Example:
 
@@ -830,33 +840,13 @@ Current phase is active.
 
 Future phases are muted or locked.
 
-This phase
-
-Journey shows the current phase once for each identity.
+Under each path, Journey shows the squares for the current phase and the day inside it, with “About 14 days.”
 
 A day with nothing completed for that identity stays empty. A day with some of that identity's goals completed is light orange. A day with every goal for that identity completed is strong orange.
 
 The current day has a subtle outline.
 
-Full Year
-
-Progress shows the calendar year, 1 January through 31 December. Each day reflects the commitments that were due on that date, across identities. A day should not be penalized for weekly or monthly commitments that were not due that day. Days after today stay empty.
-
-Show the year as one continuous grid, with no month labels or gaps.
-
-Use the same three levels as the phase: empty, light orange, strong orange.
-
-Seed the prototype with realistic historical data.
-
-Do not make the grid empty.
-
-The purpose is to immediately communicate:
-
-"My transformation is bigger than this week."
-
-The current day should have a subtle outline.
-
-The grid should horizontally scroll on mobile.
+The year is not on this screen. It lives on Progress.
 
 Premium Teaser
 
@@ -876,7 +866,7 @@ The product should create curiosity rather than pressure.
 
 PROGRESS
 
-Progress should be extremely simple. It should reflect the user's actual schedule: daily, weekly, monthly, and custom-scheduled commitments count only when due. Since phase lengths can vary, emphasize days shown up, phase purpose, and completed work rather than a universal countdown.
+Progress should be extremely simple. It uses the first selected identity for the phase, and it counts a commitment only when that occurrence was due.
 
 Show:
 
@@ -888,15 +878,21 @@ Progress
 
 Day 7
 
-Show the number of days the user has shown up during this phase. Do not require a fixed total-day denominator.
+About 14 days
+
+A thin bar shows the day inside the phase.
 
 Days you kept promises to yourself
 
 7
 
+This is the number of days closed with I showed up. A missed day does not reduce it.
+
 Commitments
 
-Show completed commitments versus commitments that have come due, using the user's actual cadence. Do not count future weekly or monthly commitments as incomplete.
+3 / 8 completed
+
+Done and total count closed days only, and only occurrences that came due. A skip is part of the total and is not done. A future weekly or monthly goal is not incomplete.
 
 Then:
 
@@ -904,13 +900,21 @@ Next phase
 
 Consistency
 
+Below that, the calendar year, 1 January through 31 December, as one continuous grid with no month labels. Each day reflects the commitments that were due, across identities. A weekly or monthly goal that was not due cannot turn the day into a miss. Days after today stay empty. A new account starts with an empty year.
+
+A day is empty when nothing due was completed, light orange when some of it was, and strong orange when all of it was. The current day has a subtle outline. The grid scrolls horizontally on mobile.
+
+The purpose is to immediately communicate:
+
+"My transformation is bigger than this week."
+
 No graphs.
 
 No analytics dashboard.
 
 No excessive statistics.
 
-This screen is simply a quiet progress check.
+This screen is simply a quiet progress check. The same premium teaser sits at the bottom.
 
 PROFILE
 
@@ -920,17 +924,17 @@ The top of Profile should be the identity statement.
 
 This should feel like an identity statement, not a social profile.
 
-Current Direction
+Current direction
 
-Master deep work
+Each chosen direction is listed. With two identities, both directions appear.
 
 Action:
 
 Change direction
 
-Changing direction returns the user to the direction-selection experience.
+This returns to direction selection.
 
-The user should not manually edit the underlying goals or progression.
+The user does not edit the underlying goals or the order in which they are earned.
 
 Identities
 
@@ -944,7 +948,17 @@ Action:
 
 Edit identities
 
-This returns to identity selection.
+This returns to identity selection, still limited to one or two.
+
+Then the account:
+
+email
+
+Free or Pro
+
+Sign out
+
+An admin also sees Analytics.
 
 Premium
 
@@ -956,13 +970,13 @@ Premium is more personal
 
 Your path, goals, and pace will adapt to you.
 
-Reset Prototype
+Reset
 
 At the bottom:
 
 Reset prototype
 
-This clears local state and returns to onboarding.
+Confirming it clears the transformation and returns to Begin. The account stays.
 
 Visual Design
 
@@ -1114,47 +1128,45 @@ Avoid putting too much information on one screen.
 
 Interaction Requirements
 
-The prototype must actually work.
+The app must actually work against the account.
 
 The user must be able to:
 
-Start onboarding
+Register or sign in
 
-Select multiple identities
+Begin
 
-See the identity statement update dynamically
+Choose one or two identities
 
-Select a direction
+See the identity statement update as they choose
 
-See the transformation path
+Choose one direction for each identity
+
+See the four phases
 
 Start the transformation
 
-Arrive on Today
+Arrive on Today with one goal per identity
 
-Complete commitments
+Mark a goal done
 
-Configure commitment recurrence when supported
+Earn the next goal after three such days, and lose the newest one after two empty days
 
-Select exact weekdays for commitments scheduled multiple times per week
-
-Open commitment actions
+Change the days of an earned goal that is not due today
 
 Replace an activity
 
-Skip a commitment occurrence without changing future occurrences
+Skip a goal for today without deleting its schedule
 
 Press I SHOWED UP
 
-See the Day Complete experience
+See the day-complete screen, including tomorrow
 
 Return to Today
 
-Open Journey
+Open Journey and see each path and its current phase
 
-Switch between This Phase and Full Year
-
-Open Progress
+Open Progress and see the year
 
 Open Profile
 
@@ -1162,59 +1174,9 @@ Change direction
 
 Edit identities
 
-Reset the prototype
+Reset the transformation without deleting the account
 
-Persist application state locally.
-
-Refreshing the page must not reset the experience.
-
-Sample Prototype State
-
-Seed the prototype with:
-
-Identities
-
-Disciplined
-
-Healthy
-
-Direction
-
-Master deep work
-
-Current phase
-
-Keep One Promise
-
-Phase duration
-
-Variable by phase; the prototype can use a recommended duration internally, but the experience should not depend on every phase being 14 days.
-
-Current day
-
-7
-
-Commitment recurrence examples
-
-Daily: make the bed
-
-Three times per week: exercise
-
-Weekly: plan groceries
-
-Monthly: review finances
-
-Only commitments due on a given day should count toward that day's completion.
-
-Days you kept promises to yourself
-
-7
-
-Historical data
-
-Include realistic contribution data across the previous months.
-
-The prototype should feel alive immediately.
+Refreshing the page must not reset the experience. A new account starts empty. There is no seeded history.
 
 Product Architecture From a User Perspective
 
@@ -1226,13 +1188,11 @@ DIRECTION
     ↓
 TRANSFORMATION PATH
     ↓
-PHASE
+PHASE (14 SHOW-UP DAYS)
     ↓
-GOALS
+ONE GOAL, THEN THE NEXT EARNED GOAL
     ↓
-COMMITMENTS (WITH RECURRENCE)
-    ↓
-TODAY'S DUE COMMITMENTS
+TODAY'S DUE GOALS
     ↓
 I SHOWED UP
     ↓
