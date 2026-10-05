@@ -30,17 +30,18 @@ One person. `email` is unique. A Google-only account has `google_sub` and a null
 
 ### subscriptions
 
-One row per user. Signup creates it. This slice does not call Stripe, so the Stripe ids stay null and `plan` stays `free`.
+One row per user. Signup creates it as `free` and does not call Stripe. Checkout stores `stripe_customer_id`. Webhooks write `stripe_subscription_id`, `subscription_status`, `current_period_end`, `cancel_at_period_end`, and `plan`. `plan` is `pro` while Stripe's status is `active`, `trialing`, or `past_due`. A scheduled cancel keeps `plan` as `pro` until `customer.subscription.deleted`, which sets `plan` back to `free`, clears `stripe_subscription_id` and `cancel_at_period_end`, and keeps `stripe_customer_id`. Ending a subscription does not set `deleted_at`.
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | uuid | Primary key |
 | user_id | uuid | Unique, foreign key to `users.id` |
 | plan | string | `free` or `pro`. Default `free` |
-| subscription_status | string(32) | Nullable |
+| subscription_status | string(32) | Nullable. Stripe's status, stored as sent |
 | stripe_customer_id | string(255) | Unique, nullable |
-| stripe_subscription_id | string(255) | Unique, nullable |
+| stripe_subscription_id | string(255) | Unique, nullable. Cleared when the subscription ends |
 | current_period_end | timestamptz | Nullable |
+| cancel_at_period_end | boolean | Default false. Does not change `plan` by itself |
 | deleted_at | timestamptz | Nullable |
 | deleted_reason | text | Nullable. Allowed only when `deleted_at` is set |
 | created_at | timestamptz | |

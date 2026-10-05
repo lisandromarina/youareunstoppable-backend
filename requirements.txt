@@ -7,6 +7,7 @@ pydantic-settings
 pwdlib[argon2]
 pyjwt
 google-auth
+stripe
 requests
 email-validator
 pytest

@@ -119,43 +119,106 @@ def test_start_rejects_a_third_identity_and_a_second_start(client, clock):
     assert again.status_code == 409
 
 
-def test_only_due_commitments_appear_and_the_schedule_can_move(client, clock):
+def mark_one_done(client, clock, identity_id=None):
+    current = on(clock)
+    body = client.get("/api/transformation", params={"on": current})
+    assert body.status_code == 200, body.text
+    payload = body.json()
+    commitment = next(
+        item
+        for group in payload["today"]["groups"]
+        if identity_id is None or group["identity_id"] == identity_id
+        for item in group["commitments"]
+        if item["status"] == "open"
+    )
+    toggled = client.post(
+        f"/api/transformation/today/commitments/{commitment['id']}/toggle",
+        params={"on": current},
+    )
+    assert toggled.status_code == 200, toggled.text
+    clock["day"] += timedelta(days=1)
+    return toggled.json()
+
+
+def test_goals_grow_after_three_done_days_and_shrink_after_two_misses(client, clock):
     register(client)
-    body = start(client, clock, selections(("disciplined", "master-deep-work"),))
-    assert titles(body, "disciplined") == ["15 minutes of uninterrupted work"]
-    upcoming = {item["title"]: item for item in body["today"]["coming_up"]}
-    assert "No phone during the first hour of work" in upcoming
-    assert "Open the work and stay with it for 15 minutes" in upcoming
+    start(client, clock, selections(("disciplined", "master-deep-work"),))
+    opened = client.get("/api/transformation", params={"on": on(clock)})
+    assert titles(opened.json(), "disciplined") == ["15 minutes of uninterrupted work"]
+    assert opened.json()["today"]["coming_up"] == []
+    for _ in range(3):
+        mark_one_done(client, clock)
+    tuesday = client.get("/api/transformation", params={"on": on(clock)})
+    assert tuesday.status_code == 200, tuesday.text
+    assert on(clock) == "2026-09-29"
+    assert titles(tuesday.json(), "disciplined") == ["15 minutes of uninterrupted work"]
+    upcoming = [item["title"] for item in tuesday.json()["today"]["coming_up"]]
+    assert upcoming == ["Open the work and stay with it for 15 minutes"]
+    clock["day"] = date(2026, 9, 30)
+    wednesday = client.get("/api/transformation", params={"on": on(clock)})
+    assert wednesday.status_code == 200, wednesday.text
+    assert titles(wednesday.json(), "disciplined") == [
+        "15 minutes of uninterrupted work",
+        "Open the work and stay with it for 15 minutes",
+    ]
+    clock["day"] = date(2026, 10, 1)
+    dropped = client.get("/api/transformation", params={"on": on(clock)})
+    assert dropped.status_code == 200, dropped.text
+    assert titles(dropped.json(), "disciplined") == ["15 minutes of uninterrupted work"]
+    assert dropped.json()["today"]["coming_up"] == []
+    clock["day"] = date(2026, 10, 6)
+    still_one = client.get("/api/transformation", params={"on": on(clock)})
+    assert titles(still_one.json(), "disciplined") == ["15 minutes of uninterrupted work"]
+
+
+def test_every_identity_grows_on_its_own(client, clock):
+    register(client, email="healthy@example.com")
+    start(
+        client,
+        clock,
+        selections(("healthy", "move-daily"), ("focused", "single-task")),
+    )
+    opened = client.get("/api/transformation", params={"on": on(clock)})
+    assert len(titles(opened.json(), "healthy")) == 1
+    assert len(titles(opened.json(), "focused")) == 1
+    for _ in range(3):
+        mark_one_done(client, clock, "healthy")
+    tuesday = client.get("/api/transformation", params={"on": on(clock)}).json()
+    healthy_upcoming = [item["title"] for item in tuesday["today"]["coming_up"] if item["identity_name"] == "Healthy"]
+    focused_upcoming = [item["title"] for item in tuesday["today"]["coming_up"] if item["identity_name"] == "Focused"]
+    assert healthy_upcoming == ["Take a 15-minute walk outside"]
+    assert focused_upcoming == []
+    assert len(titles(tuesday, "focused")) == 1
+
+
+def test_an_earned_goal_can_move_to_another_day(client, clock):
+    register(client, email="schedule@example.com")
+    start(client, clock, selections(("disciplined", "master-deep-work"),))
+    for _ in range(6):
+        mark_one_done(client, clock)
+    friday = client.get("/api/transformation", params={"on": on(clock)})
+    assert friday.status_code == 200, friday.text
+    assert on(clock) == "2026-10-02"
+    upcoming = {item["title"]: item for item in friday.json()["today"]["coming_up"]}
     phone = upcoming["No phone during the first hour of work"]
     moved = client.post(
         f"/api/transformation/commitments/{phone['planned_commitment_id']}/schedule",
         params={"on": on(clock)},
-        json={"weekdays": [5]},
+        json={"weekdays": [4]},
     )
     assert moved.status_code == 200, moved.text
     assert "No phone during the first hour of work" in titles(moved.json(), "disciplined")
-    focus = upcoming["Open the work and stay with it for 15 minutes"]
+    focus = next(
+        item
+        for item in friday.json()["today"]["groups"][0]["commitments"]
+        if item["implementation"]["title"] == "Open the work and stay with it for 15 minutes"
+    )
     rejected = client.post(
         f"/api/transformation/commitments/{focus['planned_commitment_id']}/schedule",
         params={"on": on(clock)},
         json={"weekdays": [0, 2]},
     )
     assert rejected.status_code == 422
-    clock["day"] = date(2026, 9, 28)
-    monday = client.get("/api/transformation", params={"on": on(clock)})
-    assert monday.status_code == 200
-    monday_titles = titles(monday.json(), "disciplined")
-    assert "15 minutes of uninterrupted work" in monday_titles
-    assert "Open the work and stay with it for 15 minutes" in monday_titles
-    assert "No phone during the first hour of work" not in monday_titles
-    body = settle(client, clock, monday.json())
-    clock["day"] = date(2026, 10, 5)
-    following = client.get("/api/transformation", params={"on": on(clock)})
-    assert following.status_code == 200
-    assert "No phone during the first hour of work" not in titles(following.json(), "disciplined")
-    assert body["promises_kept"] == 1
-    assert body["progress"]["commitments_done"] == 2
-    assert body["progress"]["commitments_total"] == 2
 
 
 def test_replace_skip_and_showed_up(client, clock):
@@ -257,6 +320,30 @@ def test_phase_advances_after_fourteen_showed_up_days(client, clock):
     assert disciplined["phases"][1]["status"] == "current"
     assert body["promises_kept"] == 14
     assert body["progress"]["next_phase_name"] == "Focus"
+    tomorrow = [item["title"] for item in body["tomorrow"]]
+    assert tomorrow == [
+        "15 minutes of uninterrupted work",
+        "Sit down at the same time and work for 25 minutes",
+    ]
+
+
+def test_tomorrow_is_the_next_day_and_a_gap_keeps_the_path(client, clock):
+    register(client, email="return@example.com")
+    body = start(client, clock, selections(("disciplined", "master-deep-work"),))
+    assert body["prior_closed_on"] is None
+    closed = settle(client, clock, body)
+    assert closed["today"]["date"] == "2026-09-26"
+    assert closed["prior_closed_on"] is None
+    assert [item["title"] for item in closed["tomorrow"]] == ["15 minutes of uninterrupted work"]
+    clock["day"] = date(2026, 9, 29)
+    opened = client.get("/api/transformation", params={"on": on(clock)})
+    assert opened.status_code == 200, opened.text
+    payload = opened.json()
+    assert payload["prior_closed_on"] == "2026-09-26"
+    assert payload["today"]["closed"] is False
+    assert payload["promises_kept"] == 1
+    assert payload["selections"][0]["day_in_phase"] == 2
+    assert payload["selections"][0]["stage_name"] == "Foundation"
 
 
 def test_reset_clears_the_transformation_and_leaves_the_account(client, clock):

@@ -152,6 +152,12 @@ class YearDayResponse(BaseModel):
     identities: list[YearIdentityResponse]
 
 
+class TomorrowItemResponse(BaseModel):
+    identity_name: str
+    title: str
+    cadence: str
+
+
 class TransformationResponse(BaseModel):
     statement: str
     selections: list[SelectionResponse]
@@ -159,6 +165,8 @@ class TransformationResponse(BaseModel):
     progress: ProgressResponse
     year: list[YearDayResponse]
     promises_kept: int
+    tomorrow: list[TomorrowItemResponse]
+    prior_closed_on: date | None
 
 
 def catalog_response() -> CatalogResponse:
