@@ -87,12 +87,18 @@ def post_event(client, monkeypatch, event):
     )
 
 
-def test_checkout_requires_configuration(client):
+def test_checkout_requires_configuration(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "")
+    monkeypatch.setenv("STRIPE_PRICE_ID", "")
+    monkeypatch.setenv("FRONTEND_ORIGIN", "")
     get_settings.cache_clear()
     register(client)
     response = client.post("/api/billing/checkout")
     assert response.status_code == 503
     assert response.json()["detail"] == "Billing is not configured."
+    assert client.get("/api/billing").json() == {"enabled": False}
+    get_settings.cache_clear()
 
 
 def test_checkout_creates_one_customer(client, db, monkeypatch, billing_env):
@@ -117,6 +123,8 @@ def test_checkout_creates_one_customer(client, db, monkeypatch, billing_env):
     assert recorder.checkout_params["subscription_data"] == {"metadata": {"user_id": user_id}}
     assert subscription_row(db).stripe_customer_id == "cus_test"
     me = client.get("/api/me").json()
+    assert "billing_enabled" not in me
+    assert client.get("/api/billing").json() == {"enabled": True}
     assert me["subscription"]["plan"] == "free"
     assert me["subscription"]["cancel_at_period_end"] is False
     assert "stripe_customer_id" not in me["subscription"]

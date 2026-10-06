@@ -30,6 +30,7 @@ POST /api/auth/password
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/me
+GET  /api/billing
 POST /api/billing/checkout
 POST /api/billing/portal
 POST /api/billing/webhook
@@ -109,6 +110,8 @@ STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_ID=
 FRONTEND_ORIGIN=
 ```
+
+Monthly Pro and Manage billing appear only when all four are set. If any one is empty, Profile hides them and Checkout returns `503`.
 
 `STRIPE_PRICE_ID` is the monthly Price id from the Stripe Dashboard. `FRONTEND_ORIGIN` is the web app origin, `http://localhost:5173` locally. Point the Stripe webhook at `POST /api/billing/webhook` on the API host. Locally, forward with the Stripe CLI to `http://localhost:8000/api/billing/webhook`.
 

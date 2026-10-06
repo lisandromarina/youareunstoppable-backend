@@ -27,7 +27,7 @@ A body that fails validation returns `422` with FastAPI's `detail` list. That co
 
 ## User
 
-Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. `has_password` is true when the account has a password. A Google-only account returns false until `POST /api/auth/password` succeeds. The password hash is not in this response. New accounts are `user` and `free`. `plan` is `pro` when Stripe's status is `active`, `trialing`, or `past_due`. `cancel_at_period_end` is true when a cancel is scheduled and access still lasts through `current_period_end`. Stripe customer and subscription ids stay in the database and are not in this response.
+Register, login, Google sign-in, refresh, and `GET /api/me` return this object. `plan` is `free` or `pro`. `role` is `user` or `admin`. `has_password` is true when the account has a password. A Google-only account returns false until `POST /api/auth/password` succeeds. The password hash is not in this response. New accounts are `user` and `free`. `plan` is `pro` when Stripe's status is `active`, `trialing`, or `past_due`. `cancel_at_period_end` is true when a cancel is scheduled and access still lasts through `current_period_end`. Stripe customer and subscription ids stay in the database and are not in this response. Whether Monthly Pro is offered is `GET /api/billing`, not a field on the user.
 
 ```json
 {
@@ -306,6 +306,18 @@ Query: `on`. No body.
 
 `409` when the day is already closed: `This day is already closed.`
 
+## GET /api/billing
+
+Requires the `access_token` cookie. No body.
+
+`200` says whether the four Stripe settings are set. Profile uses this to show or hide Monthly Pro and Manage billing. It is not stored on the user.
+
+```json
+{ "enabled": false }
+```
+
+`enabled` is true only when the Stripe secret, webhook secret, monthly price, and frontend origin are all set.
+
 ## POST /api/billing/checkout
 
 Requires the `access_token` cookie. No body.
@@ -320,7 +332,7 @@ Signup does not call Stripe. The first checkout creates a Stripe Customer and st
 
 `409` when the status is already `active`, `trialing`, or `past_due`: `This account already has Pro.` A scheduled cancel is still `active`, so that person uses the portal.
 
-`503` when billing settings are missing: `Billing is not configured.`
+`503` when any billing setting is missing: `Billing is not configured.`
 
 ## POST /api/billing/portal
 
@@ -334,7 +346,7 @@ Requires the `access_token` cookie. No body.
 
 `409` when this account has no Stripe customer yet: `Billing is not set up for this account.`
 
-`503` when billing settings are missing: `Billing is not configured.`
+`503` when any billing setting is missing: `Billing is not configured.`
 
 ## POST /api/billing/webhook
 
