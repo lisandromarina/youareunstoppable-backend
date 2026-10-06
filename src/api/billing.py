@@ -4,10 +4,15 @@ from sqlalchemy.orm import Session
 from src.api.deps import current_user
 from src.core.database import get_db
 from src.models.user import User
-from src.schemas.billing import BillingUrlResponse
-from src.services.billing import handle_webhook, start_checkout, start_portal
+from src.schemas.billing import BillingStatusResponse, BillingUrlResponse
+from src.services.billing import billing_configured, handle_webhook, start_checkout, start_portal
 
 router = APIRouter()
+
+
+@router.get("/api/billing", response_model=BillingStatusResponse)
+def billing_status(_user: User = Depends(current_user)) -> BillingStatusResponse:
+    return BillingStatusResponse(enabled=billing_configured())
 
 
 @router.post("/api/billing/checkout", response_model=BillingUrlResponse)

@@ -21,9 +21,19 @@ def create_stripe_client(secret_key: str) -> stripe.StripeClient:
     return stripe.StripeClient(secret_key)
 
 
+def billing_configured(settings: Settings | None = None) -> bool:
+    current = settings or get_settings()
+    return bool(
+        current.stripe_secret_key
+        and current.stripe_webhook_secret
+        and current.stripe_price_id
+        and current.frontend_origin
+    )
+
+
 def start_checkout(db: Session, user: User) -> str:
     settings = get_settings()
-    if not settings.stripe_secret_key or not settings.stripe_price_id or not settings.frontend_origin:
+    if not billing_configured(settings):
         raise DomainError(503, "Billing is not configured.")
     row = user.subscription
     if row.subscription_status in PRO_STATUSES:
@@ -58,7 +68,7 @@ def start_checkout(db: Session, user: User) -> str:
 
 def start_portal(user: User) -> str:
     settings = get_settings()
-    if not settings.stripe_secret_key or not settings.frontend_origin:
+    if not billing_configured(settings):
         raise DomainError(503, "Billing is not configured.")
     row = user.subscription
     if not row.stripe_customer_id:
