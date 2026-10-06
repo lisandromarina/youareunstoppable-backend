@@ -141,6 +141,7 @@ def to_user_response(user: User) -> UserResponse:
             "plan": subscription.plan,
             "subscription_status": subscription.subscription_status,
             "current_period_end": subscription.current_period_end,
+            "cancel_at_period_end": subscription.cancel_at_period_end,
             "deleted_at": subscription.deleted_at,
             "deleted_reason": subscription.deleted_reason,
         },

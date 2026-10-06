@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_days: int = 30
     cookie_secure: bool = False
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_id: str = ""
+    frontend_origin: str = ""
 
     @model_validator(mode="after")
     def require_runtime_secrets(self):

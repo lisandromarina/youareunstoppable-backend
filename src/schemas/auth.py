@@ -44,6 +44,7 @@ class SubscriptionResponse(BaseModel):
     plan: Plan
     subscription_status: str | None
     current_period_end: datetime | None
+    cancel_at_period_end: bool
     deleted_at: datetime | None
     deleted_reason: str | None
 
