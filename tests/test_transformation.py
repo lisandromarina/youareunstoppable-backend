@@ -1,6 +1,9 @@
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
+
+from src.models.user import Role, User
 
 def register(client, email="ada@example.com", password="password123"):
     return client.post("/api/auth/register", json={"email": email, "password": password})
@@ -64,10 +67,10 @@ def settle(client, clock, body):
                     params={"on": current},
                 )
                 assert toggled.status_code == 200, toggled.text
-    closed = client.post("/api/transformation/today/showed-up", params={"on": current})
-    assert closed.status_code == 200, closed.text
     clock["day"] += timedelta(days=1)
-    return closed.json()
+    opened = client.get("/api/transformation", params={"on": on(clock)})
+    assert opened.status_code == 200, opened.text
+    return opened.json()
 
 
 def test_catalog_requires_auth_and_marks_the_extra(client):
@@ -221,12 +224,10 @@ def test_an_earned_goal_can_move_to_another_day(client, clock):
     assert rejected.status_code == 422
 
 
-def test_replace_skip_and_showed_up(client, clock):
+def test_replace_skip_and_a_finished_day_needs_one_done_goal(client, clock):
     register(client)
     body = start(client, clock, selections(("healthy", "move-daily"),))
     commitment = body["today"]["groups"][0]["commitments"][0]
-    early = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
-    assert early.status_code == 409
     other = next(
         item for item in commitment["implementations"] if item["id"] != commitment["implementation"]["id"]
     )
@@ -244,17 +245,30 @@ def test_replace_skip_and_showed_up(client, clock):
         params={"on": on(clock)},
     )
     assert skipped.status_code == 200
-    closed = skipped.json()
-    assert closed["today"]["groups"][0]["commitments"][0]["status"] == "skipped"
-    showed = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
-    assert showed.status_code == 200
-    assert showed.json()["today"]["closed"] is True
-    assert showed.json()["promises_kept"] == 1
-    today = next(item for item in showed.json()["year"] if item["today"])
-    assert today["closed"] is True
-    assert today["intensity"] == 0
-    again = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
-    assert again.status_code == 409
+    assert skipped.json()["today"]["closed"] is False
+    clock["day"] += timedelta(days=1)
+    unfinished = client.get("/api/transformation", params={"on": on(clock)})
+    assert unfinished.status_code == 200, unfinished.text
+    assert unfinished.json()["promises_kept"] == 0
+    assert unfinished.json()["prior_closed_on"] is None
+    goal = unfinished.json()["today"]["groups"][0]["commitments"][0]
+    done = client.post(
+        f"/api/transformation/today/commitments/{goal['id']}/toggle",
+        params={"on": on(clock)},
+    )
+    assert done.status_code == 200
+    assert done.json()["today"]["closed"] is False
+    finished_on = on(clock)
+    clock["day"] += timedelta(days=1)
+    finished = client.get("/api/transformation", params={"on": on(clock)})
+    assert finished.status_code == 200, finished.text
+    payload = finished.json()
+    assert payload["today"]["closed"] is False
+    assert payload["promises_kept"] == 1
+    assert payload["prior_closed_on"] == finished_on
+    kept = next(item for item in payload["year"] if item["date"] == finished_on)
+    assert kept["closed"] is True
+    assert kept["intensity"] >= 1
 
 
 def test_a_day_is_light_until_every_goal_is_done(client, clock):
@@ -332,8 +346,10 @@ def test_tomorrow_is_the_next_day_and_a_gap_keeps_the_path(client, clock):
     body = start(client, clock, selections(("disciplined", "master-deep-work"),))
     assert body["prior_closed_on"] is None
     closed = settle(client, clock, body)
-    assert closed["today"]["date"] == "2026-09-26"
-    assert closed["prior_closed_on"] is None
+    assert closed["today"]["date"] == "2026-09-27"
+    assert closed["today"]["closed"] is False
+    assert closed["prior_closed_on"] == "2026-09-26"
+    assert closed["promises_kept"] == 1
     assert [item["title"] for item in closed["tomorrow"]] == ["15 minutes of uninterrupted work"]
     clock["day"] = date(2026, 9, 29)
     opened = client.get("/api/transformation", params={"on": on(clock)})
@@ -346,15 +362,28 @@ def test_tomorrow_is_the_next_day_and_a_gap_keeps_the_path(client, clock):
     assert payload["selections"][0]["stage_name"] == "Foundation"
 
 
-def test_reset_clears_the_transformation_and_leaves_the_account(client, clock):
+def test_reset_clears_the_transformation_and_leaves_the_account(client, clock, db):
     register(client)
     start(client, clock)
+    user = db.scalar(select(User).where(User.email == "ada@example.com"))
+    assert user is not None
+    user.role = Role.admin
+    db.commit()
     removed = client.delete("/api/transformation")
     assert removed.status_code == 204
     missing = client.get("/api/transformation", params={"on": on(clock)})
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Transformation has not started."
     assert client.get("/api/me").status_code == 200
+
+
+def test_reset_is_admin_only(client, clock):
+    register(client)
+    start(client, clock)
+    removed = client.delete("/api/transformation")
+    assert removed.status_code == 404
+    kept = client.get("/api/transformation", params={"on": on(clock)})
+    assert kept.status_code == 200
 
 
 def test_date_must_be_near_today(client, clock):
