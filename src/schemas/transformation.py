@@ -165,6 +165,7 @@ class TransformationResponse(BaseModel):
     progress: ProgressResponse
     year: list[YearDayResponse]
     promises_kept: int
+    started_on: date
     tomorrow: list[TomorrowItemResponse]
     prior_closed_on: date | None
 

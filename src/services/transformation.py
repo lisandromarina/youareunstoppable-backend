@@ -204,23 +204,6 @@ def skip_commitment(
     return _finish(db, transformation.user_id, on)
 
 
-def showed_up(db: Session, user: User, on: date) -> TransformationResponse:
-    _check_date(on)
-    transformation = _load(db, user.id)
-    if transformation is None:
-        raise DomainError(404, "Transformation has not started.")
-    day = _ensure_today(db, transformation, on)
-    if _status(day.status) == DayStatus.closed.value:
-        raise DomainError(409, "This day is already closed.")
-    if any(_status(item.status) == CommitmentStatus.open.value for item in day.commitments):
-        raise DomainError(409, "Finish or skip every commitment first.")
-    day.status = DayStatus.closed
-    day.closed_at = utcnow()
-    for path in transformation.paths:
-        _advance(path)
-    return _finish(db, user.id, on)
-
-
 def set_schedule(
     db: Session,
     user: User,
@@ -338,6 +321,7 @@ def _copy_path(
 
 
 def _ensure_today(db: Session, transformation: Transformation, on: date) -> Day:
+    _close_finished_days(transformation, on)
     existing = _find_day(transformation, on)
     if existing is not None:
         if _status(existing.status) == DayStatus.open.value:
@@ -349,6 +333,23 @@ def _ensure_today(db: Session, transformation: Transformation, on: date) -> Day:
     _schedule(day, transformation)
     db.flush()
     return day
+
+
+def _close_finished_days(transformation: Transformation, on: date) -> None:
+    pending = [
+        day
+        for day in transformation.days
+        if _as_date(day.calendar_date) < on and _status(day.status) == DayStatus.open.value
+    ]
+    pending.sort(key=lambda day: _as_date(day.calendar_date))
+    for day in pending:
+        done = any(_status(item.status) == CommitmentStatus.done.value for item in day.commitments)
+        if not done:
+            continue
+        day.status = DayStatus.closed
+        day.closed_at = utcnow()
+        for path in transformation.paths:
+            _advance(path)
 
 
 def _schedule(day: Day, transformation: Transformation) -> None:
@@ -642,6 +643,7 @@ def _present(transformation: Transformation, on: date) -> TransformationResponse
         ),
         year=_year(transformation, on),
         promises_kept=_promises_kept(transformation),
+        started_on=_as_date(transformation.started_on),
         tomorrow=_tomorrow(transformation, paths, on),
         prior_closed_on=_prior_closed_on(transformation, on),
     )

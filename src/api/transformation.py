@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from src.api.deps import current_user
+from src.api.deps import current_admin, current_user
 from src.core.database import get_db
 from src.models.user import User
 from src.schemas.transformation import (
@@ -20,7 +20,6 @@ from src.services.transformation import (
     replace_commitment,
     reset_transformation,
     set_schedule,
-    showed_up,
     skip_commitment,
     start_transformation,
     toggle_commitment,
@@ -68,7 +67,7 @@ def update(
 @router.delete("/api/transformation", status_code=204)
 def reset(
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(current_admin),
 ) -> Response:
     reset_transformation(db, user)
     return Response(status_code=204)
@@ -126,12 +125,3 @@ def schedule(
     user: User = Depends(current_user),
 ) -> TransformationResponse:
     return set_schedule(db, user, on, planned_id, body.weekdays, body.month_day)
-
-
-@router.post("/api/transformation/today/showed-up", response_model=TransformationResponse)
-def close_day(
-    on: date = Query(),
-    db: Session = Depends(get_db),
-    user: User = Depends(current_user),
-) -> TransformationResponse:
-    return showed_up(db, user, on)
