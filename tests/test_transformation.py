@@ -111,6 +111,7 @@ def test_start_rejects_a_third_identity_and_a_second_start(client, clock):
     assert titles(body, "healthy") == ["Walk for 20 minutes"]
     assert titles(body, "disciplined") != titles(body, "healthy")
     assert body["promises_kept"] == 0
+    assert body["started_on"] == "2026-09-26"
     assert body["year"][0]["date"] == "2026-01-01"
     assert body["year"][-1]["date"] == "2026-12-31"
     assert len(body["year"]) == 365

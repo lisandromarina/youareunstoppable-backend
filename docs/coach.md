@@ -29,7 +29,7 @@ flowchart TD
 
 ## Conversation and proposals
 
-New routes, signed in, Pro only (`plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`). Anyone else gets `403`. If `AI_API_KEY` is empty, both routes return `503`, the same pattern as Stripe in [src/core/config.py](../src/core/config.py).
+New routes, signed in, Pro only (`plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`). Anyone else gets `403`. If `AI_API_KEY` is empty, `POST /api/coach/messages` returns `503`, the same pattern as Stripe in [src/core/config.py](../src/core/config.py). `POST /api/coach/apply` does not call the model, so a missing key does not block it.
 
 - `POST /api/coach/messages` with `{ "message": "..." }` appends the turn to `transformations.context`, calls the model with the chosen identities, the stored idea, the streak, recent closed days, and today's open goals, and returns the reply plus a proposal when the model has one.
 - `POST /api/coach/apply` applies the proposal already stored on the server. The client cannot send goal text of its own.
@@ -66,6 +66,8 @@ Tomorrow and Coming up show the goals the next day would include at the streak t
 
 "I don't want to work on this anymore" is a `plan` proposal. That is the one that rewrites unfinished goals.
 
+The coach distinguishes a lasting goal from today's implementation of a goal that already exists, and from advice that is not stored. The user does not need a new goal every time they ask for a meal, a workout, or another specific action. When the request supports an existing goal, the coach recommends the concrete action and may set it as today's implementation. It does not refuse a reasonable request because it is not a new goal.
+
 There is no second route. Adjust today opens the same coach. Short chips only prefill the message.
 
 A gap still shows the quick win, with no lecture. If the user explains the miss, the coach may propose a smaller today, or a new plan if they want the change to last. One miss is not a pattern. The model may mention a repeated skip only when several recent days show it. Nothing about that pattern is stored.
@@ -89,7 +91,9 @@ A new thought rewrites the unfinished plan. Closed snapshots stay. An unfinished
 
 ## Screen
 
-A full-screen coach, opened from Today, not a generic chat. Short turns, one field, and the proposal as an ordered list: the quick win first, then what gets added as they show up, plus any one-time days and a short reason when one exists. One confirm button. Pro sees "Talk with your coach" and "Adjust today". Journey and Progress keep the existing "Coming soon" line.
+Today shows a coach card under the day's promises. Pro gets "Talk with your coach" and "Adjust today". Free gets a locked card. Unlock opens the Pro prompt. Journey and Progress keep the existing "Coming soon" line.
+
+The coach is one conversation, opened from either button. Adjust today stays in that chat and only prefills the field. The thread shows the recent turns, the coach on the left and the user on the right. A proposal sits in the thread: the quick win first, then what joins as they show up, with the one-time date and one reason line. "Start this plan" confirms it. "Change it" stays in the same chat.
 
 Voice stays short, with no praise and no guilt. "Start with the bed. The rest waits until you've shown up."
 

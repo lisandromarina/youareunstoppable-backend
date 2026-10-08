@@ -1,6 +1,6 @@
 # API
 
-The routes that exist today. Why the session works this way is in [auth-decisions.md](auth-decisions.md). Days, the journal, and the coach are not in this file.
+The routes that exist today. Why the session works this way is in [auth-decisions.md](auth-decisions.md). The journal is not in this file. Coach routes are below.
 
 The interactive page is `http://localhost:8000/docs` while the API is running. The OpenAPI document is `http://localhost:8000/openapi.json`.
 
@@ -192,13 +192,13 @@ The catalog is the free template. Starting or replacing a transformation copies 
 
 `GET`, `POST`, `PUT`, and the today commands return the same document.
 
-`statement` is built from the selected identity names, in order. Two identities read `I'm becoming disciplined and healthy.`
+`statement` is built from the selected identity names, in order. Two identities read `I'm becoming disciplined and healthy.` When `context.statement` is set, that line is used instead.
 
 `selections` has one entry per identity, at most two. `phase_name` is the current headline. `stage_name` is the journey label. `phases` marks each phase `complete`, `current`, or `upcoming`. `active_commitments` is how many commitments that identity has today.
 
-`today.groups` lists the active goals that are due that day, under each identity. A path starts with one goal. Three days in a row with at least one goal done add the next one on the following day. Two days in a row with none done remove the latest one, and the count stays at least one. `objective` is the goal. `cadence` is the frequency label. `implementation` is the chosen way. `implementations` are the other ways to meet the same goal. `status` is `open`, `done`, or `skipped`. `coming_up` lists active goals that are not due that day, with `when` for the chosen schedule.
+`today.groups` lists the active goals that are due that day, under each identity. A catalog path starts with one goal. Three days in a row with at least one goal done add the next one on the following day. Two days in a row with none done remove the latest one, and the count stays at least one. An adaptive path uses the streak prefix instead of that count. `objective` is the goal. `cadence` is the frequency label. `due_on` is set for a one-time goal. `reason` is the optional line under the action. `implementation` is the chosen way. `implementations` are the other ways to meet the same goal. `status` is `open`, `done`, or `skipped`. `coming_up` lists active goals that are not due that day, with `when` for the chosen schedule. On an adaptive path it lists what tomorrow would add at the streak this close would produce.
 
-`promises_kept` is how many days have been closed. A missed day does not reduce it. The product does not show a streak.
+`promises_kept` is how many days have been closed. A missed day does not reduce it. The product does not show a streak. `started_on` is the date the transformation began.
 
 `tomorrow` lists the active goals due the day after `on`, including a goal earned by marking one done today. Each item has `identity_name`, `title`, and `cadence`. `prior_closed_on` is the latest closed date before `on`, or null when no earlier day has been closed. A gap before today does not remove those days.
 
@@ -292,7 +292,7 @@ Query: `on`. Body is either weekdays or a month day:
 
 `200` updates that planned commitment's schedule. Weekdays use Monday as `0`. A weekly commitment needs one weekday. A several-times-a-week commitment needs exactly `times_per_week` weekdays. A monthly commitment needs a day from 1 to 28. If `on` is still open, a commitment that becomes due is added, and an open commitment that is no longer due is removed. A closed day stays as it was. Later occurrences keep the new schedule.
 
-`422` when the day count does not match: `Select exactly 3 days.` A daily commitment returns `This commitment is due every day.` A bad month day returns `Choose a day from 1 to 28.`
+`422` when the day count does not match: `Select exactly 3 days.` A daily commitment returns `This commitment is due every day.` A one-time commitment returns `This commitment happens once.` A bad month day returns `Choose a day from 1 to 28.`
 
 `404` when the planned commitment is not on this transformation: `Commitment was not found.`
 
@@ -300,11 +300,71 @@ Query: `on`. Body is either weekdays or a month day:
 
 Query: `on`. No body.
 
-`200` closes the day when every due commitment is done or skipped, advances each path's phase day and streak, and returns the document. Commitments that are not due do not block the day. The last day of a phase rolls into the next phase at day 1 and keeps the streak. After the last phase, the path stays there and `completed` is true.
+`200` closes the day when every due commitment is done or skipped, advances each path's phase day, and returns the document. The streak increments once when that path completed at least one due goal. It resets to 0 when that path completed none. Skip does not count. Completing several goals still adds one. Commitments that are not due do not block the day and are not misses. The last day of a phase rolls into the next phase at day 1. After the last phase, the path stays there and `completed` is true.
 
 `409` when any due commitment is still `open`: `Finish or skip every commitment first.`
 
 `409` when the day is already closed: `This day is already closed.`
+
+## Coach
+
+The coach routes require the `access_token` cookie and query `on`, the same date window as the transformation routes. Pro is `plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`. Anyone else gets `403` with `Coach is part of Pro.` A missing transformation is `404` with `Transformation has not started.`
+
+The model suggests. The server validates and applies. The client cannot send goal text to apply.
+
+### GET /api/coach
+
+`200` returns the stored transcript and the current proposal, so the same conversation opens again. The transcript is the last eight turns. `proposal` is null when none is stored. This route does not call the model.
+
+### POST /api/coach/messages
+
+```json
+{ "message": "I want to start working on my business" }
+```
+
+`200` returns the reply and, when the model has one, the stored proposal. A reply with no proposal is valid and clears any previous proposal. More than five goals is trimmed to five. The first kept goal is the quick win.
+
+```json
+{
+  "reply": "Start with the smallest step.",
+  "proposal": {
+    "type": "plan",
+    "rationale": "The work should be small enough to finish.",
+    "goals": [
+      {
+        "identity_id": "disciplined",
+        "objective": "Show up",
+        "title": "Make the bed",
+        "recurrence": "daily",
+        "due_on": null,
+        "weekdays": [],
+        "times_per_week": null,
+        "month_day": null,
+        "position": 1,
+        "reason": "Start with something you can finish."
+      }
+    ]
+  }
+}
+```
+
+`proposal.type` is `plan` or `today`. `plan` is a lasting change. `today` matches existing goals by identity and position and can shorten a title for the open day.
+
+`503` when `AI_API_KEY` is empty: `Coach is not configured.`
+
+`422` when the model output cannot be used: `The coach response could not be used.` Nothing is written.
+
+`502` when the model call fails: `The coach could not reply.`
+
+### POST /api/coach/apply
+
+No body. The server loads the proposal stored by the last message, validates it again, and commits in one transaction.
+
+`200` returns the transformation document. A `plan` sets `origin` to `adaptive`, appends `rationale`, replaces the current phase's coach commitments for the identities in the proposal, and rebuilds the open day. Closed days stay. A `today` proposal changes only the open day. Future planned titles stay. Tomorrow follows the streak again.
+
+`409` when nothing is stored: `There is no proposal to apply.`
+
+`422` when the stored proposal no longer matches the plan. Apply does not call the model, so a missing `AI_API_KEY` does not block it.
 
 ## GET /api/billing
 

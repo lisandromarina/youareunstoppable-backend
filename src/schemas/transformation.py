@@ -74,10 +74,12 @@ class CommitmentResponse(BaseModel):
     planned_commitment_id: UUID | None
     objective: str
     cadence: str
-    recurrence: Literal["daily", "times_per_week", "weekly", "monthly"]
+    recurrence: Literal["daily", "times_per_week", "weekly", "monthly", "once"]
     times_per_week: int | None
     weekdays: list[int]
     month_day: int | None
+    due_on: date | None = None
+    reason: str | None = None
     implementation: ImplementationResponse
     implementations: list[ImplementationResponse]
     status: Literal["open", "done", "skipped"]
@@ -89,10 +91,11 @@ class UpcomingResponse(BaseModel):
     objective: str
     title: str
     cadence: str
-    recurrence: Literal["daily", "times_per_week", "weekly", "monthly"]
+    recurrence: Literal["daily", "times_per_week", "weekly", "monthly", "once"]
     times_per_week: int | None
     weekdays: list[int]
     month_day: int | None
+    due_on: date | None = None
     when: str
 
 
@@ -165,6 +168,7 @@ class TransformationResponse(BaseModel):
     progress: ProgressResponse
     year: list[YearDayResponse]
     promises_kept: int
+    started_on: date
     tomorrow: list[TomorrowItemResponse]
     prior_closed_on: date | None
 

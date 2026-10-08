@@ -111,6 +111,10 @@ def update_transformation(
         transformation.paths.append(_copy_path(identity, direction, index))
     db.flush()
 
+    if _status(transformation.origin) == Origin.adaptive.value and not any(
+        _path_is_adaptive(transformation, path) for path in transformation.paths
+    ):
+        transformation.origin = Origin.catalog
     if day is not None and _status(day.status) == DayStatus.open.value:
         _schedule(day, transformation)
     return _finish(db, user.id, on)
@@ -217,7 +221,7 @@ def showed_up(db: Session, user: User, on: date) -> TransformationResponse:
     day.status = DayStatus.closed
     day.closed_at = utcnow()
     for path in transformation.paths:
-        _advance(path)
+        _advance(path, day)
     return _finish(db, user.id, on)
 
 
@@ -353,12 +357,20 @@ def _ensure_today(db: Session, transformation: Transformation, on: date) -> Day:
 
 def _schedule(day: Day, transformation: Transformation) -> None:
     on = _as_date(day.calendar_date)
-    for path in sorted(transformation.paths, key=lambda item: item.sort_order):
-        for planned in _due_commitments(path, transformation, on):
-            _append_occurrence(day, path, planned)
+    existing = {item.planned_commitment_id for item in day.commitments}
+    for path, planned, title in _due_pairs(transformation, on, materialize=True):
+        if planned.id in existing:
+            _apply_title_override(day, planned.id, title)
+            continue
+        _append_occurrence(day, path, planned, title)
 
 
-def _append_occurrence(day: Day, path: TransformationPath, planned: PlannedCommitment) -> None:
+def _append_occurrence(
+    day: Day,
+    path: TransformationPath,
+    planned: PlannedCommitment,
+    title: str | None = None,
+) -> None:
     chosen = _default_implementation(planned)
     day.commitments.append(
         DayCommitment(
@@ -367,9 +379,17 @@ def _append_occurrence(day: Day, path: TransformationPath, planned: PlannedCommi
             implementation=chosen,
             status=CommitmentStatus.open,
             objective_snapshot=planned.objective,
-            title_snapshot=chosen.title,
+            title_snapshot=title or chosen.title,
         )
     )
+
+
+def _apply_title_override(day: Day, planned_id: UUID, title: str | None) -> None:
+    if not title:
+        return
+    for item in day.commitments:
+        if item.planned_commitment_id == planned_id and _status(item.status) == CommitmentStatus.open.value:
+            item.title_snapshot = title
 
 
 def _ordered_commitments(path: TransformationPath) -> list[PlannedCommitment]:
@@ -439,6 +459,8 @@ def _weekdays(planned: PlannedCommitment) -> set[int]:
 
 
 def _is_due(on: date, planned: PlannedCommitment) -> bool:
+    if planned.recurrence == "once":
+        return planned.due_on is not None and _as_date(planned.due_on) == on
     if planned.recurrence == "daily":
         return True
     if planned.recurrence in {"weekly", "times_per_week"}:
@@ -451,6 +473,8 @@ def _is_due(on: date, planned: PlannedCommitment) -> bool:
 
 
 def _cadence(planned: PlannedCommitment) -> str:
+    if planned.recurrence == "once":
+        return "Once"
     if planned.recurrence == "daily":
         return "Daily"
     if planned.recurrence == "weekly":
@@ -464,10 +488,190 @@ def _cadence(planned: PlannedCommitment) -> str:
 
 
 def _when(planned: PlannedCommitment) -> str:
+    if planned.recurrence == "once" and planned.due_on is not None:
+        due = _as_date(planned.due_on)
+        return f"{due.strftime('%b')} {due.day}"
     if planned.recurrence == "monthly":
         return f"Day {planned.month_day or 1}"
     names = [_WEEKDAYS[day] for day in sorted(_weekdays(planned)) if 0 <= day <= 6]
     return ", ".join(names)
+
+
+def _path_is_adaptive(transformation: Transformation, path: TransformationPath) -> bool:
+    if _status(transformation.origin) != Origin.adaptive.value:
+        return False
+    phase = _phase_at(path, path.current_phase_position)
+    if phase is None or not phase.commitments:
+        return False
+    return all(item.catalog_commitment_id is None for item in phase.commitments)
+
+
+def _current_commitments(path: TransformationPath) -> list[PlannedCommitment]:
+    phase = _phase_at(path, path.current_phase_position)
+    if phase is None:
+        return []
+    return sorted(phase.commitments, key=lambda item: item.position)
+
+
+def _once_settled(transformation: Transformation, planned_id: UUID) -> bool:
+    for day in transformation.days:
+        if _status(day.status) != DayStatus.closed.value:
+            continue
+        for item in day.commitments:
+            if item.planned_commitment_id != planned_id:
+                continue
+            if _status(item.status) in {CommitmentStatus.done.value, CommitmentStatus.skipped.value}:
+                return True
+    return False
+
+
+def _once_eligible(
+    transformation: Transformation,
+    planned: PlannedCommitment,
+    on: date,
+    *,
+    include_overdue: bool,
+) -> bool:
+    if planned.due_on is None or _once_settled(transformation, planned.id):
+        return False
+    due = _as_date(planned.due_on)
+    if due == on:
+        return True
+    return include_overdue and due < on
+
+
+def _today_override(transformation: Transformation, on: date) -> list[dict] | None:
+    context = transformation.context if isinstance(transformation.context, dict) else None
+    if context is None:
+        return None
+    raw = context.get("today_override")
+    if not isinstance(raw, dict) or raw.get("on") != on.isoformat():
+        return None
+    goals = raw.get("goals")
+    if not isinstance(goals, list) or not goals:
+        return None
+    return [item for item in goals if isinstance(item, dict)][:5]
+
+
+def _preview_streak(path: TransformationPath, transformation: Transformation, today: date) -> int:
+    day = _find_day(transformation, today)
+    if day is None or _status(day.status) == DayStatus.closed.value:
+        return path.commitment_streak
+    own = [item for item in day.commitments if item.path_id == path.id]
+    if any(_status(item.status) == CommitmentStatus.done.value for item in own):
+        return path.commitment_streak + 1
+    return path.commitment_streak
+
+
+def _slide_once(eligible: list[PlannedCommitment], chosen_ids: set[UUID], on: date) -> None:
+    nxt = on + timedelta(days=1)
+    seen: set[UUID] = set()
+    for planned in eligible:
+        if planned.id in seen:
+            continue
+        seen.add(planned.id)
+        planned.due_on = on if planned.id in chosen_ids else nxt
+
+
+def _override_pairs(
+    transformation: Transformation,
+    goals: list[dict],
+) -> list[tuple[TransformationPath, PlannedCommitment, str | None]]:
+    rows: list[tuple[TransformationPath, PlannedCommitment, str | None]] = []
+    for goal in goals[:5]:
+        raw_id = goal.get("planned_commitment_id")
+        if not isinstance(raw_id, str):
+            continue
+        try:
+            planned_id = UUID(raw_id)
+        except ValueError:
+            continue
+        planned, path = _find_planned(transformation, planned_id)
+        if planned is None or path is None:
+            continue
+        title = goal.get("title")
+        rows.append((path, planned, title.strip() if isinstance(title, str) and title.strip() else None))
+    return rows
+
+
+def _adaptive_selected(
+    transformation: Transformation,
+    paths: list[TransformationPath],
+    on: date,
+    streaks: dict[UUID, int],
+    *,
+    materialize: bool,
+) -> list[tuple[TransformationPath, PlannedCommitment, str | None]]:
+    override = _today_override(transformation, on)
+    if override is not None:
+        return _override_pairs(transformation, override)
+
+    quicks: list[tuple[TransformationPath, PlannedCommitment]] = []
+    onces: list[tuple[TransformationPath, PlannedCommitment]] = []
+    rest: list[tuple[TransformationPath, PlannedCommitment]] = []
+    eligible_once: list[PlannedCommitment] = []
+    for path in paths:
+        ordered = _current_commitments(path)
+        if not ordered:
+            continue
+        prefix = min(5, max(0, streaks.get(path.id, 0)) + 1)
+        repeating = [item for item in ordered if item.recurrence != "once" and _is_due(on, item)]
+        shown = repeating[:prefix]
+        once = [
+            item
+            for item in ordered
+            if item.recurrence == "once"
+            and _once_eligible(transformation, item, on, include_overdue=materialize)
+        ]
+        eligible_once.extend(once)
+        shown_ids = {item.id for item in shown}
+        once_ids = {item.id for item in once}
+        quick = next((item for item in ordered if item.id in shown_ids or item.id in once_ids), None)
+        if quick is not None:
+            quicks.append((path, quick))
+        for item in once:
+            if quick is None or item.id != quick.id:
+                onces.append((path, item))
+        for item in shown:
+            if quick is None or item.id != quick.id:
+                rest.append((path, item))
+    chosen = (quicks + onces + rest)[:5]
+    if materialize:
+        _slide_once(eligible_once, {planned.id for _, planned in chosen}, on)
+    return [(path, planned, None) for path, planned in chosen]
+
+
+def _due_pairs(
+    transformation: Transformation,
+    on: date,
+    *,
+    materialize: bool,
+    preview_from: date | None = None,
+) -> list[tuple[TransformationPath, PlannedCommitment, str | None]]:
+    override = _today_override(transformation, on)
+    if override is not None:
+        return _override_pairs(transformation, override)
+    paths = sorted(transformation.paths, key=lambda item: item.sort_order)
+    pairs: list[tuple[TransformationPath, PlannedCommitment, str | None]] = []
+    adaptive: list[TransformationPath] = []
+    for path in paths:
+        if _path_is_adaptive(transformation, path):
+            adaptive.append(path)
+            continue
+        for planned in _due_commitments(path, transformation, on):
+            pairs.append((path, planned, None))
+    if not adaptive:
+        return pairs
+    streaks = {
+        path.id: (
+            _preview_streak(path, transformation, preview_from)
+            if preview_from is not None
+            else path.commitment_streak
+        )
+        for path in adaptive
+    }
+    pairs.extend(_adaptive_selected(transformation, adaptive, on, streaks, materialize=materialize))
+    return pairs
 
 
 def _coming_up(
@@ -479,27 +683,41 @@ def _coming_up(
     present = {item.planned_commitment_id for item in day.commitments}
     rows: list[UpcomingResponse] = []
     for path in paths:
+        if _path_is_adaptive(transformation, path):
+            continue
         identity = find_identity(path.identity_id)
         identity_name = identity.name if identity is not None else path.identity_id
         for planned in _active_commitments(path, transformation, on):
             if planned.id in present or _is_due(on, planned):
                 continue
-            chosen = _default_implementation(planned)
-            rows.append(
-                UpcomingResponse(
-                    planned_commitment_id=planned.id,
-                    identity_name=identity_name,
-                    objective=planned.objective,
-                    title=chosen.title,
-                    cadence=_cadence(planned),
-                    recurrence=planned.recurrence,  # type: ignore[arg-type]
-                    times_per_week=planned.times_per_week,
-                    weekdays=sorted(_weekdays(planned)),
-                    month_day=planned.month_day,
-                    when=_when(planned),
-                )
-            )
+            rows.append(_upcoming(path, planned, identity_name))
+    if any(_path_is_adaptive(transformation, path) for path in paths):
+        target = on + timedelta(days=1)
+        for path, planned, _title in _due_pairs(transformation, target, materialize=False, preview_from=on):
+            if not _path_is_adaptive(transformation, path) or planned.id in present:
+                continue
+            identity = find_identity(path.identity_id)
+            identity_name = identity.name if identity is not None else path.identity_id
+            rows.append(_upcoming(path, planned, identity_name))
     return rows
+
+
+def _upcoming(path: TransformationPath, planned: PlannedCommitment, identity_name: str) -> UpcomingResponse:
+    del path
+    chosen = _default_implementation(planned)
+    return UpcomingResponse(
+        planned_commitment_id=planned.id,
+        identity_name=identity_name,
+        objective=planned.objective,
+        title=chosen.title,
+        cadence=_cadence(planned),
+        recurrence=planned.recurrence,  # type: ignore[arg-type]
+        times_per_week=planned.times_per_week,
+        weekdays=sorted(_weekdays(planned)),
+        month_day=planned.month_day,
+        due_on=_as_date(planned.due_on) if planned.due_on is not None else None,
+        when=_when(planned),
+    )
 
 
 def _find_planned(
@@ -519,6 +737,8 @@ def _apply_schedule(
     weekdays: list[int] | None,
     month_day: int | None,
 ) -> None:
+    if planned.recurrence == "once":
+        raise DomainError(422, "This commitment happens once.")
     if planned.recurrence == "daily":
         raise DomainError(422, "This commitment is due every day.")
     if planned.recurrence == "monthly":
@@ -541,14 +761,15 @@ def _apply_schedule(
 
 def _reconcile_open_day(day: Day, transformation: Transformation) -> None:
     on = _as_date(day.calendar_date)
-    due: dict[UUID, tuple[TransformationPath, PlannedCommitment]] = {}
-    for path in transformation.paths:
-        for planned in _due_commitments(path, transformation, on):
-            due[planned.id] = (path, planned)
-            if not any(item.planned_commitment_id == planned.id for item in day.commitments):
-                _append_occurrence(day, path, planned)
+    due = _due_pairs(transformation, on, materialize=True)
+    due_ids = {planned.id for _, planned, _title in due}
+    for path, planned, title in due:
+        if not any(item.planned_commitment_id == planned.id for item in day.commitments):
+            _append_occurrence(day, path, planned, title)
+        else:
+            _apply_title_override(day, planned.id, title)
     for item in list(day.commitments):
-        if item.planned_commitment_id not in due and _status(item.status) == CommitmentStatus.open.value:
+        if item.planned_commitment_id not in due_ids and _status(item.status) == CommitmentStatus.open.value:
             day.commitments.remove(item)
 
 
@@ -560,8 +781,8 @@ def _sync_occurrence(
 ) -> None:
     on = _as_date(day.calendar_date)
     existing = [item for item in day.commitments if item.planned_commitment_id == planned.id]
-    active = {item.id for item in _active_commitments(path, transformation, on)}
-    if planned.id in active and _is_due(on, planned):
+    due_ids = {item.id for _path, item, _title in _due_pairs(transformation, on, materialize=True)}
+    if planned.id in due_ids:
         if not existing:
             _append_occurrence(day, path, planned)
         return
@@ -570,8 +791,14 @@ def _sync_occurrence(
             day.commitments.remove(item)
 
 
-def _advance(path: TransformationPath) -> None:
-    path.commitment_streak += 1
+def _advance(path: TransformationPath, day: Day) -> None:
+    own = [item for item in day.commitments if item.path_id == path.id]
+    if own:
+        succeeded = any(_status(item.status) == CommitmentStatus.done.value for item in own)
+        if succeeded:
+            path.commitment_streak += 1
+        else:
+            path.commitment_streak = 0
     if path.completed:
         return
     phase = _phase_at(path, path.current_phase_position)
@@ -629,7 +856,7 @@ def _present(transformation: Transformation, on: date) -> TransformationResponse
     following = None if first.completed else _phase_at(first, first.current_phase_position + 1)
     done, total = _commitment_counts(transformation)
     return TransformationResponse(
-        statement=_statement(names),
+        statement=_statement(transformation, names),
         selections=selections,
         today=_today(day, transformation, paths),
         progress=ProgressResponse(
@@ -642,6 +869,7 @@ def _present(transformation: Transformation, on: date) -> TransformationResponse
         ),
         year=_year(transformation, on),
         promises_kept=_promises_kept(transformation),
+        started_on=transformation.started_on,
         tomorrow=_tomorrow(transformation, paths, on),
         prior_closed_on=_prior_closed_on(transformation, on),
     )
@@ -728,6 +956,8 @@ def _commitment_response(commitment: DayCommitment) -> CommitmentResponse:
         times_per_week=planned.times_per_week if planned is not None else None,
         weekdays=sorted(_weekdays(planned)) if planned is not None else [],
         month_day=planned.month_day if planned is not None else None,
+        due_on=_as_date(planned.due_on) if planned is not None and planned.due_on is not None else None,
+        reason=planned.reason if planned is not None else None,
         implementation=ImplementationResponse(id=chosen_id, title=commitment.title_snapshot),
         implementations=implementations,
         status=_status(commitment.status),  # type: ignore[arg-type]
@@ -809,21 +1039,109 @@ def _tomorrow(
     paths: list[TransformationPath],
     on: date,
 ) -> list[TomorrowItemResponse]:
+    del paths
     target = on + timedelta(days=1)
     rows: list[TomorrowItemResponse] = []
-    for path in paths:
+    for path, planned, title in _due_pairs(transformation, target, materialize=False, preview_from=on):
         identity = find_identity(path.identity_id)
-        identity_name = identity.name if identity is not None else path.identity_id
-        for planned in _due_commitments(path, transformation, target):
-            chosen = _default_implementation(planned)
-            rows.append(
-                TomorrowItemResponse(
-                    identity_name=identity_name,
-                    title=chosen.title,
-                    cadence=_cadence(planned),
-                )
+        chosen = _default_implementation(planned)
+        rows.append(
+            TomorrowItemResponse(
+                identity_name=identity.name if identity is not None else path.identity_id,
+                title=title or chosen.title,
+                cadence=_cadence(planned),
             )
+        )
     return rows
+
+
+def install_coach_plan(
+    db: Session,
+    transformation: Transformation,
+    on: date,
+    goals: list[dict],
+    rationale: str | None,
+) -> None:
+    transformation.origin = Origin.adaptive
+    text = rationale.strip() if isinstance(rationale, str) else ""
+    if text:
+        if transformation.rationale and transformation.rationale.strip():
+            transformation.rationale = transformation.rationale.rstrip() + "\n" + text
+        else:
+            transformation.rationale = text
+    grouped: dict[str, list[dict]] = {}
+    for goal in goals:
+        grouped.setdefault(str(goal["identity_id"]), []).append(goal)
+    for identity_id, items in grouped.items():
+        path = _path_for(transformation, identity_id)
+        if path is None:
+            raise DomainError(422, "The coach response could not be used.")
+        phase = _phase_at(path, path.current_phase_position)
+        if phase is None:
+            raise DomainError(500, "The current phase is missing.")
+        _replace_commitments(db, phase, items)
+    day = _find_day(transformation, on)
+    if day is not None:
+        _rebuild_open(day, transformation)
+
+
+def install_today_override(transformation: Transformation, on: date, goals: list[dict]) -> None:
+    context = dict(transformation.context or {})
+    context["today_override"] = {"on": on.isoformat(), "goals": goals[:5]}
+    context.pop("proposal", None)
+    transformation.context = context
+    day = _find_day(transformation, on)
+    if day is not None:
+        _rebuild_open(day, transformation)
+
+
+def _replace_commitments(db: Session, phase: PathPhase, goals: list[dict]) -> None:
+    _detach_planned(db, [item.id for item in list(phase.commitments)])
+    for item in list(phase.commitments):
+        phase.commitments.remove(item)
+    db.flush()
+    for goal in sorted(goals, key=lambda item: int(item["position"])):
+        due_on = goal.get("due_on")
+        planned = PlannedCommitment(
+            position=int(goal["position"]),
+            unlock_streak=0,
+            objective=str(goal["objective"]),
+            catalog_commitment_id=None,
+            recurrence=str(goal["recurrence"]),
+            times_per_week=goal.get("times_per_week"),
+            weekdays=list(goal.get("weekdays") or []),
+            month_day=goal.get("month_day"),
+            due_on=due_on if isinstance(due_on, date) else None,
+            reason=goal.get("reason"),
+        )
+        planned.implementations.append(
+            PlannedImplementation(position=0, title=str(goal["title"]), is_default=True)
+        )
+        phase.commitments.append(planned)
+    db.flush()
+
+
+def _detach_planned(db: Session, planned_ids: list[UUID]) -> None:
+    if not planned_ids:
+        return
+    rows = db.scalars(
+        select(DayCommitment).where(DayCommitment.planned_commitment_id.in_(planned_ids))
+    ).all()
+    for row in rows:
+        row.planned_commitment_id = None
+        row.implementation_id = None
+        row.planned = None
+        row.implementation = None
+    db.flush()
+
+
+def _rebuild_open(day: Day, transformation: Transformation) -> None:
+    if _status(day.status) != DayStatus.open.value:
+        return
+    for item in list(day.commitments):
+        if _status(item.status) == CommitmentStatus.open.value:
+            day.commitments.remove(item)
+    _schedule(day, transformation)
 
 
 def _load(db: Session, user_id: UUID) -> Transformation | None:
@@ -876,7 +1194,11 @@ def _identity_name(identity_id: str) -> str:
     return identity.name
 
 
-def _statement(names: list[str]) -> str:
+def _statement(transformation: Transformation, names: list[str]) -> str:
+    context = transformation.context if isinstance(transformation.context, dict) else None
+    statement = context.get("statement") if context is not None else None
+    if isinstance(statement, str) and statement.strip():
+        return statement.strip()
     lowered = [name.lower() for name in names]
     if len(lowered) == 1:
         return f"I'm becoming {lowered[0]}."

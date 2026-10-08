@@ -156,9 +156,9 @@ Product
 - The path starts with one active goal. Three progress days in a row add the next goal. One empty day breaks the run. Two empty days in a row remove the most recently added goal. The count never drops below one.
 - "I showed up" closes the day when every due commitment is done or skipped, and advances every path.
 - promises_kept is the count of closed days. It is not stored. Misses, skips, completion, momentum, and the year intensity view (0, 1, or 2 per date) are computed from days and day_commitments. They are not columns.
-- commitment_streak is stored on the path. It increments when the day closes and resets to 0 after a gap or when the path is replaced. It is not shown and does not decide which goals are active.
+- commitment_streak is stored on the path. It increments once when a close completed at least one due goal, and resets to 0 when a close completed none, after a gap, or when the path is replaced. It is not shown. Catalog scheduling does not read it. Adaptive scheduling uses min(5, streak + 1) repeating goals.
 - Reset deletes the transformation, its paths, and its days. The account stays.
-- Premium AI is not built. origin may be catalog or adaptive. rationale and context are unused by the free routes.
+- origin is catalog or adaptive. A confirmed coach plan sets adaptive and appends rationale. context holds the coach facts, the last eight transcript turns, the stored proposal, and a one-day override. There is no goal, message, or pattern table.
 
 Tables (PostgreSQL via SQLAlchemy; ids are UUIDs)
 
@@ -238,13 +238,15 @@ planned_commitments
 - unlock_streak int, check >= 0
 - objective text required
 - catalog_commitment_id string(200) nullable
-- recurrence: daily | times_per_week | weekly | monthly
+- recurrence: daily | times_per_week | weekly | monthly | once
+- due_on date nullable. Required when recurrence is once, otherwise null
+- reason text nullable
 - times_per_week int nullable, check null or 1..7
 - weekdays json, list of ints, Monday = 0 through Sunday = 6
 - month_day int nullable, check null or 1..28
 - Unique (phase_id, position)
-- weekly keeps one weekday. times_per_week keeps exactly that many weekdays. monthly uses month_day. daily is due every day.
-- A weekly or monthly commitment that is not due is not a miss.
+- weekly keeps one weekday. times_per_week keeps exactly that many weekdays. monthly uses month_day. daily is due every day. once is due only on due_on.
+- A weekly, monthly, or not-yet-due one-time commitment is not a miss. Adaptive goals past the streak prefix are not misses.
 
 planned_implementations
 - id PK

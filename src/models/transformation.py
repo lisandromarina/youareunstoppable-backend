@@ -134,8 +134,12 @@ class PlannedCommitment(Base):
         UniqueConstraint("phase_id", "position", name="uq_planned_commitments_position"),
         CheckConstraint("unlock_streak >= 0", name="ck_planned_commitments_unlock"),
         CheckConstraint(
-            "recurrence IN ('daily', 'times_per_week', 'weekly', 'monthly')",
+            "recurrence IN ('daily', 'times_per_week', 'weekly', 'monthly', 'once')",
             name="ck_planned_commitments_recurrence",
+        ),
+        CheckConstraint(
+            "(recurrence = 'once' AND due_on IS NOT NULL) OR (recurrence <> 'once' AND due_on IS NULL)",
+            name="ck_planned_commitments_due_on",
         ),
         CheckConstraint(
             "times_per_week IS NULL OR (times_per_week >= 1 AND times_per_week <= 7)",
@@ -159,6 +163,8 @@ class PlannedCommitment(Base):
     times_per_week: Mapped[int | None] = mapped_column(Integer)
     weekdays: Mapped[list] = mapped_column(JSON, default=list)
     month_day: Mapped[int | None] = mapped_column(Integer)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(Text)
 
     phase: Mapped[PathPhase] = relationship(back_populates="commitments")
     implementations: Mapped[list["PlannedImplementation"]] = relationship(

@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_price_id: str = ""
     frontend_origin: str = ""
+    ai_api_key: str = ""
+    ai_model: str = "gpt-4o-mini"
 
     @model_validator(mode="after")
     def require_runtime_secrets(self):

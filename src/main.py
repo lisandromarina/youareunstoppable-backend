@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from src.api.admin import router as admin_router
 from src.api.auth import router as auth_router
 from src.api.billing import router as billing_router
+from src.api.coach import router as coach_router
 from src.api.transformation import router as transformation_router
 from src.services.auth import AuthError
 from src.services.errors import DomainError
@@ -13,6 +14,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(billing_router)
 app.include_router(transformation_router)
+app.include_router(coach_router)
 
 
 @app.exception_handler(AuthError)

@@ -74,7 +74,7 @@ Deleting a transformation deletes its paths, phases, planned commitments, planne
 
 ### transformations
 
-One per user. `origin` is `catalog` when the path was copied from the catalog. The column also allows `adaptive`, for a later AI that writes the same tables. `rationale` and `context` are unused by the free routes.
+One per user. `origin` is `catalog` when the path was copied from the catalog, and `adaptive` after a confirmed coach plan. `rationale` is appended when that plan is confirmed. `context` stores the coach facts, transcript, proposal, and today override.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -89,7 +89,7 @@ One per user. `origin` is `catalog` when the path was copied from the catalog. T
 
 ### transformation_paths
 
-One path per chosen identity. At most two identities. `identity_id` and `direction_id` are catalog slugs stored on the user. `commitment_streak` is the unlock streak for the extra commitment. The calendar streak is not stored here.
+One path per chosen identity. At most two identities. `identity_id` and `direction_id` are catalog slugs stored on the user. `commitment_streak` counts successful days for that path: a close with at least one completed due goal adds one, and a close with none sets it to 0. The product does not show it. Catalog goal selection does not read it. Adaptive days do.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -119,7 +119,7 @@ The phases copied onto the path. Free phases are 14 days. `length_days` is store
 
 ### planned_commitments
 
-The goal is `objective`. The action is a planned implementation. `recurrence` says when that action is due: `daily`, `times_per_week`, `weekly`, or `monthly`. `weekdays` is the schedule for weekly and several-times-a-week commitments, with Monday as 0. `month_day` is the schedule for a monthly commitment, from 1 to 28. `times_per_week` is how many weekdays a several-times-a-week commitment must keep. `unlock_streak` remains on the row and is not what makes a commitment due.
+The goal is `objective`. The action is a planned implementation. `recurrence` says when that action is due: `daily`, `times_per_week`, `weekly`, `monthly`, or `once`. `weekdays` is the schedule for weekly and several-times-a-week commitments, with Monday as 0. `month_day` is the schedule for a monthly commitment, from 1 to 28. `due_on` is the date of a one-time goal. `times_per_week` is how many weekdays a several-times-a-week commitment must keep. `reason` is the optional line under the action. `unlock_streak` remains on the row and is not what makes a commitment due.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -129,7 +129,9 @@ The goal is `objective`. The action is a planned implementation. `recurrence` sa
 | unlock_streak | integer | Must be ≥ 0. Not used to hide a commitment |
 | objective | text | The goal. Replace does not change it |
 | catalog_commitment_id | string(200) | Nullable |
-| recurrence | string(32) | `daily`, `times_per_week`, `weekly`, or `monthly` |
+| recurrence | string(32) | `daily`, `times_per_week`, `weekly`, `monthly`, or `once` |
+| due_on | date | Required for `once`, otherwise null |
+| reason | text | Nullable. One short line under the action |
 | times_per_week | integer | Nullable. 1–7 when set |
 | weekdays | json | List of weekday numbers, Monday = 0 |
 | month_day | integer | Nullable. 1–28 when set |

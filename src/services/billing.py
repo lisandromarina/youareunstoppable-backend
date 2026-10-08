@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 PRO_STATUSES = frozenset({"active", "trialing", "past_due"})
 
 
+def pro_entitled(user: User) -> bool:
+    row = user.subscription
+    if row is None:
+        return False
+    plan = row.plan.value if isinstance(row.plan, Plan) else row.plan
+    return plan == Plan.pro.value and row.subscription_status in PRO_STATUSES
+
+
 def create_stripe_client(secret_key: str) -> stripe.StripeClient:
     return stripe.StripeClient(secret_key)
 

@@ -2,13 +2,13 @@
 
 The rules the API protects. Sign-in is live. The transformation record is live. This file does not list endpoints. The live contract is in [api.md](api.md).
 
-There is no journal, no coach, and no evening check-in. Premium AI is not built. Free and a later Premium write the same tables. The product screens are in [product.md](product.md).
+There is no journal and no evening check-in. The coach is Pro-only and writes the same transformation tables. Free accounts keep the catalog path. The product screens are in [product.md](product.md). The coach's product rules are in [coach.md](coach.md).
 
 ## The record
 
 One user has one transformation.
 
-A transformation is a copy of a path, not a pointer at the shared catalog. Free copies the catalog in when the user starts. A later AI can rewrite that same user's phases, objectives, and implementations. Closed days keep the text they were given when the day opened.
+A transformation is a copy of a path, not a pointer at the shared catalog. Free copies the catalog in when the user starts. The coach rewrites the current phase's commitments on that same record. Closed days keep the text they were given when the day opened.
 
 The user chooses one or two identities, and one direction for each identity. The catalog supplies the phases and the commitments. The client does not send phase names, frequencies, or commitment text.
 
@@ -20,9 +20,9 @@ A day is a calendar date. It is open until the user shows up, then closed. A clo
 
 A planned commitment has an objective and one or more implementations. The objective is the goal. The implementation is the action. Replace never changes the objective. Skip settles the current occurrence. It does not delete the schedule, and it does not count as done.
 
-Each commitment has a recurrence: `daily`, `times_per_week`, `weekly`, or `monthly`. Frequency is how often. The schedule is when: weekdays for weekly and several-times-a-week commitments, or a day of the month from 1 to 28. The free catalog sets the frequency. The user can change the days. A several-times-a-week commitment must keep exactly that many weekdays. A weekly commitment keeps one.
+Each commitment has a recurrence: `daily`, `times_per_week`, `weekly`, `monthly`, or `once`. Frequency is how often. The schedule is when: weekdays for weekly and several-times-a-week commitments, a day of the month from 1 to 28, or `due_on` for a one-time goal. The free catalog sets the frequency. The user can change the days of a weekly, several-times-a-week, or monthly commitment. A several-times-a-week commitment must keep exactly that many weekdays. A weekly commitment keeps one. A one-time goal is due only on `due_on` and does not repeat after it is done or skipped. `reason` is an optional line under the action.
 
-A path starts with one active goal, the first commitment in catalog order. Later commitments stay hidden until they are earned. Each identity keeps its own count.
+A catalog path starts with one active goal, the first commitment in catalog order. Later commitments stay hidden until they are earned. Each identity keeps its own count. An adaptive path does not use that count.
 
 A progress day is a calendar day with at least one of that path's goals marked done. Skip does not count. Three progress days in a row add the next catalog goal, up to the last one on the path. The new goal is due starting the next day. One day with nothing done breaks that run and does not remove a goal. Two of those days in a row remove the most recently added goal. The count never drops below one.
 
@@ -36,7 +36,7 @@ The set is chosen when the day opens. Changing the schedule updates an open day:
 
 The product does not show a streak. `promises_kept` is the number of days the user has closed. A missed day does not reduce it. It is computed from closed days. It is not stored.
 
-`commitment_streak` is still stored on the path. It increments when the day closes. It resets to 0 when a day opens after a gap, and when that path is replaced. It does not decide which goals are active, and it is not shown. A new phase does not reset it. After the last day of a phase, the path moves to day 1 of the next phase. After the last phase, the path stays on that phase and is marked complete. Phase position does not add or remove goals.
+`commitment_streak` is stored on the path. It is not shown. Closing a day increments it once when that path completed at least one due goal. Skip does not count. Completing several goals still adds one. Closing a day where that path completed none sets it to 0. A path with nothing due keeps its streak. It also resets to 0 when a day opens after a gap, and when that path is replaced. Catalog scheduling does not read it. Adaptive scheduling does. A new phase does not reset it. After the last day of a phase, the path moves to day 1 of the next phase. After the last phase, the path stays on that phase and is marked complete. Phase position does not add or remove goals.
 
 A missed calendar day does not consume a phase day. The read model exposes `prior_closed_on` so the client can recognize that gap, and `tomorrow` so a closed day can show the commitments due the next calendar day. Neither one erases promises already kept.
 
@@ -44,7 +44,7 @@ Completion, misses, skips, and momentum stay computable from days and day commit
 
 ## Changing the path
 
-An unchanged identity and direction keep their phase day and unlock streak. A new or changed path is copied again at day 1 with an unlock streak of 0. If today is still open, its commitments are rebuilt from the current plan. Closed days stay.
+An unchanged identity and direction keep their phase day and unlock streak. A new or changed path is copied again from the catalog at day 1 with an unlock streak of 0. Adaptive commitments leave with the dropped path. If no path is still coach-written, `origin` returns to `catalog`. If today is still open, its commitments are rebuilt from the current plan. Closed days stay.
 
 Reset deletes the transformation, its paths, and its days. The account stays.
 
@@ -58,7 +58,17 @@ New accounts are `role=user` and `plan=free`. This slice does not call Stripe, s
 
 ## Origin
 
-`transformations.origin` is `catalog` for a path copied from the catalog. The column also allows `adaptive`, for a path a later AI writes. `hybrid` is not a value yet. `rationale` and `context` are nullable and unused by the free routes. When a later recommendation replaces the reason, it must be appended, not overwritten. This slice stores a single `rationale` and does not add AI tables.
+`transformations.origin` is `catalog` for a path copied from the catalog. Confirming a coach plan sets it to `adaptive`. `hybrid` is not a value. `rationale` is one text field. Confirming a plan appends the reason on a new line. It is not replaced.
+
+`context` is one JSON object. The server keeps `idea`, `statement`, `constraints`, `preferences`, `skills`, `obligations`, `availability`, `transcript`, `proposal`, and `today_override`. Unknown keys are dropped. `obligations` are facts the user stated, such as work hours. They are not planned commitments. The transcript is the last eight turns. There is no message table, goal table, or pattern table.
+
+When `context.statement` is set, it is the transformation statement. Otherwise the statement stays the identity sentence.
+
+A path is adaptive when `origin` is `adaptive` and its current-phase commitments have no catalog id. Those days use the streak. Repeating goals that are calendar-due that day contribute `min(5, commitment_streak + 1)`, in position order. One-time goals are eligible on `due_on`. The day is capped at 5 across adaptive identities. Order is the quick win, then due one-time goals, then the other repeating goals. The quick win is not dropped to make room for a one-time goal. A one-time goal that does not fit, or an unfinished one whose date has passed, gets `due_on` moved to the next day. It is not a miss. Goals outside the prefix are not misses.
+
+`context.today_override` replaces that selection for one date. It can show up to five existing goals even when the streak is short, or a shorter title for today. Tomorrow uses the streak again. Tomorrow and Coming up preview the streak this close would produce. If today is still open and at least one due goal is done, the preview adds one. A closed day uses the streak already stored. A miss previews the quick win. The preview does not rewrite closed days.
+
+Catalog paths keep the three-day and two-day rule. The coach does not change that.
 
 ## Year intensity
 

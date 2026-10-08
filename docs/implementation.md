@@ -4,7 +4,7 @@ How to build the API, and what exists now. Domain rules live in [domain.md](doma
 
 ## Current state
 
-Sign-in is live. The transformation record is live: catalog, start, today, showed up, and reset. Monthly billing is live: Checkout, the Customer Portal, and webhooks write the existing subscription row. Journal, coach, and an AI client are not. Pro does not unlock a separate product yet.
+Sign-in is live. The transformation record is live: catalog, start, today, showed up, and reset. Monthly billing is live: Checkout, the Customer Portal, and webhooks write the existing subscription row. The coach is live for Pro. It writes the same transformation tables. Journal is not.
 
 Installed today, from `requirements.txt`:
 
@@ -18,6 +18,7 @@ Installed today, from `requirements.txt`:
 - PyJWT
 - Google auth, used to verify ID tokens
 - Stripe, used for Checkout, the Customer Portal, and webhooks
+- Requests, used by the coach client for OpenAI chat completions
 
 Live routes:
 
@@ -43,6 +44,10 @@ POST /api/transformation/today/commitments/{commitment_id}/toggle
 POST /api/transformation/today/commitments/{commitment_id}/replace
 POST /api/transformation/today/commitments/{commitment_id}/skip
 POST /api/transformation/today/showed-up
+POST /api/transformation/commitments/{planned_id}/schedule
+GET /api/coach
+POST /api/coach/messages
+POST /api/coach/apply
 ```
 
 `GET /api/hello` still returns:
@@ -55,7 +60,7 @@ POST /api/transformation/today/showed-up
 
 Request bodies, cookies, and status codes are in [api.md](api.md). Register, login, Google sign-in, and refresh set HttpOnly cookies and return the user. New subscriptions have `plan` `free`. Checkout does not run at signup. A webhook is what sets `plan` to `pro`.
 
-Not present yet: an AI client. Premium will write the same transformation tables. It does not get its own goal or message tables. This billing slice does not gate Today, Journey, or Progress.
+The coach writes the same transformation tables. It does not get its own goal, message, or pattern tables. Pro access is `plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`. Free Today, Journey, and Progress stay on the catalog. Journey keeps its existing coming-soon line.
 
 The choices behind sign-in are in [auth-decisions.md](auth-decisions.md). Domain rules for the path, the two streaks, and the year are in [domain.md](domain.md).
 
@@ -115,11 +120,14 @@ Monthly Pro and Manage billing appear only when all four are set. If any one is 
 
 `STRIPE_PRICE_ID` is the monthly Price id from the Stripe Dashboard. `FRONTEND_ORIGIN` is the web app origin, `http://localhost:5173` locally. Point the Stripe webhook at `POST /api/billing/webhook` on the API host. Locally, forward with the Stripe CLI to `http://localhost:8000/api/billing/webhook`.
 
-Later services will add:
+The coach reads these when a message is sent. The API still boots if they are empty. Messages then return `503`. Apply does not call the model.
 
 ```text
 AI_API_KEY=
+AI_MODEL=
 ```
+
+`AI_MODEL` defaults to `gpt-4o-mini` when it is empty. Do not commit the key.
 
 Do not commit `.env` files or credentials.
 
@@ -149,6 +157,7 @@ src/
 ├── api/
 │   ├── auth.py
 │   ├── billing.py
+│   ├── coach.py
 │   ├── deps.py
 │   └── transformation.py
 ├── domain/
@@ -157,10 +166,13 @@ src/
 ├── schemas/
 │   ├── auth.py
 │   ├── billing.py
+│   ├── coach.py
 │   └── transformation.py
 ├── services/
 │   ├── auth.py
+│   ├── ai.py
 │   ├── billing.py
+│   ├── coach.py
 │   └── transformation.py
 └── core/
 ```
@@ -169,9 +181,9 @@ src/
 
 `POST /api/billing/checkout` and `POST /api/billing/portal` are signed in. `POST /api/billing/webhook` is not. The webhook verifies `Stripe-Signature` on the raw body. `apply_subscription` sets `plan=pro` only when Stripe's status is `active`, `trialing`, or `past_due`. A scheduled cancel is still `active` with `cancel_at_period_end` true, so Pro lasts through `current_period_end`. `customer.subscription.deleted` sets `plan=free`, clears `cancel_at_period_end` and `stripe_subscription_id`, and keeps `stripe_customer_id`. A valid event that matches no row returns 200. Stripe customer and subscription ids stay off `GET /api/me`.
 
-### Later — coach
+### Coach — now
 
-A later AI writes `origin`, `rationale`, phases, and planned commitments on the transformation that already exists. Do not add a separate Premium record. Do not add an `is_premium` column. When that path exists, Pro access is `plan=pro` and `subscription_status` in `active`, `trialing`, or `past_due`.
+`POST /api/coach/messages` and `POST /api/coach/apply` are signed in. `src/services/ai.py` is the only module that calls OpenAI. Tests mock `complete` and do not use the network. `src/services/coach.py` validates the JSON, merges `transformations.context`, and stores the proposal. Apply reloads that proposal. The client does not send goals. `src/services/transformation.py` owns the streak, the adaptive day, and the catalog earn-and-drop rule. A confirmed plan sets `origin` to `adaptive` and appends `rationale`. A today proposal changes the open day only. There is no `is_premium` column and no coach table.
 
 ## Conventions
 
