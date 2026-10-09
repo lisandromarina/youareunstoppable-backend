@@ -20,6 +20,7 @@ from src.services.transformation import (
     replace_commitment,
     reset_transformation,
     set_schedule,
+    showed_up,
     skip_commitment,
     start_transformation,
     toggle_commitment,
@@ -111,6 +112,15 @@ def skip(
     user: User = Depends(current_user),
 ) -> TransformationResponse:
     return skip_commitment(db, user, on, commitment_id)
+
+
+@router.post("/api/transformation/today/showed-up", response_model=TransformationResponse)
+def close_day(
+    on: date = Query(),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> TransformationResponse:
+    return showed_up(db, user, on)
 
 
 @router.post(

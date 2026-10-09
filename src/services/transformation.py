@@ -204,6 +204,23 @@ def skip_commitment(
     return _finish(db, transformation.user_id, on)
 
 
+def showed_up(db: Session, user: User, on: date) -> TransformationResponse:
+    _check_date(on)
+    transformation = _load(db, user.id)
+    if transformation is None:
+        raise DomainError(404, "Transformation has not started.")
+    day = _ensure_today(db, transformation, on)
+    if _status(day.status) == DayStatus.closed.value:
+        raise DomainError(409, "This day is already closed.")
+    if any(_status(item.status) == CommitmentStatus.open.value for item in day.commitments):
+        raise DomainError(409, "Finish or skip every commitment first.")
+    day.status = DayStatus.closed
+    day.closed_at = utcnow()
+    for path in transformation.paths:
+        _advance(path)
+    return _finish(db, transformation.user_id, on)
+
+
 def set_schedule(
     db: Session,
     user: User,

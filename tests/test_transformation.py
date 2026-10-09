@@ -224,6 +224,28 @@ def test_an_earned_goal_can_move_to_another_day(client, clock):
     assert rejected.status_code == 422
 
 
+def test_showed_up_closes_the_day(client, clock):
+    register(client, email="show@example.com")
+    body = start(client, clock, selections(("healthy", "move-daily"),))
+    assert body["selections"][0]["day_in_phase"] == 1
+    early = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
+    assert early.status_code == 409
+    commitment = body["today"]["groups"][0]["commitments"][0]
+    done = client.post(
+        f"/api/transformation/today/commitments/{commitment['id']}/toggle",
+        params={"on": on(clock)},
+    )
+    assert done.status_code == 200
+    closed = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
+    assert closed.status_code == 200, closed.text
+    payload = closed.json()
+    assert payload["today"]["closed"] is True
+    assert payload["promises_kept"] == 1
+    assert payload["selections"][0]["day_in_phase"] == 2
+    again = client.post("/api/transformation/today/showed-up", params={"on": on(clock)})
+    assert again.status_code == 409
+
+
 def test_replace_skip_and_a_finished_day_needs_one_done_goal(client, clock):
     register(client)
     body = start(client, clock, selections(("healthy", "move-daily"),))
