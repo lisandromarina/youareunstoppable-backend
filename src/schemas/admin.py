@@ -16,9 +16,17 @@ class OverviewResponse(BaseModel):
     started_path: int
     days_completed: int
     active_users: int
-    retention_1d: float | None
-    retention_3d: float | None
-    retention_7d: float | None
+    opened_today: int
+    closed_today: int
+    commitments_done: int
+    commitments_skipped: int
+    return_1d: float | None
+    closed_1d: float | None
+    return_3d: float | None
+    closed_3d: float | None
+    return_7d: float | None
+    closed_7d: float | None
+    day1_closure: float | None
 
 
 class FunnelStepResponse(BaseModel):
@@ -29,13 +37,18 @@ class FunnelStepResponse(BaseModel):
     percent_of_previous: float | None
 
 
+class CohortDayResponse(BaseModel):
+    returned: float | None
+    closed: float | None
+
+
 class CohortResponse(BaseModel):
     date: date
     size: int
-    day_1: float | None
-    day_3: float | None
-    day_7: float | None
-    day_14: float | None
+    day_1: CohortDayResponse | None
+    day_3: CohortDayResponse | None
+    day_7: CohortDayResponse | None
+    day_14: CohortDayResponse | None
 
 
 class AnalyticsResponse(BaseModel):
