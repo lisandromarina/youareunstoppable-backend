@@ -144,9 +144,18 @@ def test_snapshot_counts_dropoff_and_return(db):
     assert older.day_7.closed == 0.0
     assert older.day_14 is None
 
-    same_day = next(row for row in body.cohorts if row.date == today)
+    assert body.cohorts[0].date == today
+    assert len(body.cohorts) == 14
+    assert body.cohorts[1].date == today - timedelta(days=1)
+    assert body.cohorts[1].size == 0
+    same_day = body.cohorts[0]
     assert same_day.day_1 is None
     assert same_day.day_7 is None
+
+    _user(db, "lisandromarina0@gmail.com", signed)
+    db.commit()
+    without_owner = snapshot(db, today)
+    assert without_owner.overview.total_users == overview.total_users
 
 
 def test_admin_can_read_the_dashboard(client, db):

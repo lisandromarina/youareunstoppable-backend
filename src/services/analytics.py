@@ -28,6 +28,17 @@ _FUNNEL = (
     ("day1", "Complete day 1"),
 )
 _RETENTION_DAYS = (1, 3, 7, 14)
+_COHORT_DAYS = 14
+_EXCLUDED_EMAILS = frozenset(
+    {
+        "lisandromarina0@gmail.com",
+        "marianomarina04@hotmail.com",
+        "contact.miloaure@gmail.com",
+        "lisandromarina1@gmail.com",
+        "pollofabian013@gmail.com",
+        "youareunstoppableofficial@gmail.com",
+    }
+)
 
 
 def mark_onboarding(db: Session, user: User, step: str) -> None:
@@ -49,7 +60,11 @@ def mark_onboarding(db: Session, user: User, step: str) -> None:
 
 
 def snapshot(db: Session, today: date) -> AnalyticsResponse:
-    users = list(db.scalars(select(User).where(User.deleted_at.is_(None))))
+    users = [
+        user
+        for user in db.scalars(select(User).where(User.deleted_at.is_(None)))
+        if user.email.casefold() not in _EXCLUDED_EMAILS
+    ]
     signup = {user.id: _as_date(user.created_at) for user in users}
     ids = set(signup)
 
@@ -162,8 +177,8 @@ def snapshot(db: Session, today: date) -> AnalyticsResponse:
     for user_id, signed in signup.items():
         grouped[signed].append(user_id)
     cohorts = [
-        _cohort(signed, grouped[signed], opened, closed, today)
-        for signed in sorted(grouped, reverse=True)[:14]
+        _cohort(today - timedelta(days=offset), grouped[today - timedelta(days=offset)], opened, closed, today)
+        for offset in range(_COHORT_DAYS)
     ]
     return AnalyticsResponse(overview=overview, funnel=funnel, cohorts=cohorts)
 
@@ -198,7 +213,7 @@ def _cohort(
 ) -> CohortResponse:
     def cell(offset: int) -> CohortDayResponse | None:
         target = signed + timedelta(days=offset)
-        if target > today:
+        if target > today or not members:
             return None
         return CohortDayResponse(
             returned=_percent(sum(1 for user_id in members if target in opened[user_id]), len(members)),
